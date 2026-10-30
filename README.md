@@ -10,7 +10,7 @@ This repository is a **pnpm workspace** for the vio ecosystem. The root is priva
 
 ## Quick start
 
-The package is being prepared for its first npm release. Once published:
+Install the public package:
 
 ```bash
 npm install @zede/vio node-gtk
