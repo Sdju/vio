@@ -1,0 +1,36 @@
+name: Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GDK_BACKEND: x11
+      GSK_RENDERER: cairo
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install GTK dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential python3 pkg-config libgtk-4-dev libgirepository1.0-dev gir1.2-gtk-4.0 xvfb dbus-x11
+      - uses: voidzero-dev/setup-vp@v1.21.1
+        with:
+          node-version-file: .node-version
+          run-install: false
+      - run: npm install --global npm@11.19.0
+      - run: vp install --frozen-lockfile
+      - name: Checks, real GTK widgets and packed consumer
+        run: dbus-run-session -- xvfb-run -a sh -c 'VIO_TEST_GTK=1 vp env exec --node 24.21.0 vp run check && vp env exec --node 24.21.0 vp run test:gtk'
