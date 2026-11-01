@@ -12,7 +12,7 @@ Versions used for the experiments:
 
 | Component   | Version                                                             |
 | ----------- | ------------------------------------------------------------------- |
-| `@zede/vio` | 0.7.1 (`packages/vio/src`, Node type stripping; `dist` also tested) |
+| `@zede/vio` | 0.7.2 (`packages/vio/src`, Node type stripping; `dist` also tested) |
 | Vue         | `@vue/runtime-core` 3.5.44                                          |
 | node-gtk    | 4.1.1                                                               |
 | GTK         | 4.24 (GI typelib, real `DISPLAY=:0`)                                |
