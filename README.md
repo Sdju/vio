@@ -23,6 +23,8 @@ See the [package guide](packages/vio/README.md) for a complete counter applicati
 
 Use Node.js 24 (pinned in `.node-version`), [Vite+](https://viteplus.dev), GTK4 and GObject Introspection. `node-gtk` may need Python 3, make and a C++ compiler if no native prebuild is available.
 
+`packages/vio` carries its own `.node-version` because package scripts run from that directory, where Vite+ resolves the Node version, and `node-gtk` is built for the Node 24 ABI. Do not delete it or raise the Node major without rebuilding the `node-gtk` binding.
+
 On Ubuntu 24.04:
 
 ```bash
