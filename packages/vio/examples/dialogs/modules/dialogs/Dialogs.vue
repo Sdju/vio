@@ -7,6 +7,10 @@ import {
   VButton,
   VDialog,
   VLabel,
+  VShortcutsGroup,
+  VShortcutsSection,
+  VShortcutsShortcut,
+  VShortcutsWindow,
   VWindow,
 } from "@zede/vio";
 
@@ -16,6 +20,7 @@ const windowRef = ref();
 const alertRef = ref();
 const showDialog = ref(false);
 const showAbout = ref(false);
+const showShortcuts = ref(false);
 const response = ref("No dialog opened yet");
 
 function close() {
@@ -25,6 +30,11 @@ function close() {
 
 function closeAbout() {
   showAbout.value = false;
+  return true;
+}
+
+function closeShortcuts() {
+  showShortcuts.value = false;
   return true;
 }
 
@@ -59,6 +69,7 @@ async function ask() {
       <VLabel>{{ response }}</VLabel>
       <VButton @clicked="showDialog = true">Open VDialog</VButton>
       <VButton @clicked="showAbout = true">Open VAboutDialog</VButton>
+      <VButton @clicked="showShortcuts = true">Show VShortcutsWindow</VButton>
       <VButton @clicked="ask">Ask VAlertDialog</VButton>
       <VButton @clicked="props.quit()">Quit</VButton>
     </VBox>
@@ -92,6 +103,18 @@ async function ask() {
     :authors="['vio contributors']"
     @close-request="closeAbout"
   />
+
+  <VShortcutsWindow title="vio shortcuts" :visible="showShortcuts" @close-request="closeShortcuts">
+    <VShortcutsSection title="Editing" section-name="editing">
+      <VShortcutsGroup title="Files">
+        <VShortcutsShortcut title="Open" accelerator="&lt;Control&gt;o" />
+        <VShortcutsShortcut title="Save" accelerator="&lt;Control&gt;s" />
+      </VShortcutsGroup>
+      <VShortcutsGroup title="Navigation">
+        <VShortcutsShortcut title="Search" accelerator="&lt;Control&gt;f" />
+      </VShortcutsGroup>
+    </VShortcutsSection>
+  </VShortcutsWindow>
 
   <VAlertDialog
     ref="alertRef"

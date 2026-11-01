@@ -21,7 +21,7 @@ vp run --filter @zede/vio demo:data   # shared store in ColumnView + GridView, T
 | `VSearchEntry`        | `Gtk.SearchEntry`                       | `v-model:text`                           | none                                             | none                                      | `search` proxies immediate `changed`, no debounce  |
 | `VInscription`        | `Gtk.Inscription`                       | none                                     | none                                             | none; `text` or `markup`                  | `text` and `markup` are mutually exclusive         |
 | `VSearchBar`          | `Gtk.SearchBar`                         | manual `search-mode-enabled` pair        | none                                             | default: exactly one `VSearchEntry`       | no SFC `v-model` allowlist entry                   |
-| `VActionBar`          | `Gtk.ActionBar`                         | none                                     | none                                             | `#start`, `#end` (default fills `#start`) | repacks a role group on reorder                    |
+| `VActionBar`          | `Gtk.ActionBar`                         | none                                     | none                                             | `#start`, `#end` (default fills `#start`) | inserts/reorders in the internal role box          |
 | `VInfoBar`            | `Gtk.InfoBar`                           | none                                     | none                                             | `#content` (default), `#action`           | action items must be activatable widgets           |
 | `VStatusbar`          | `Gtk.Statusbar`                         | none                                     | `messages: string[]`                             | none                                      | shows the last message; deprecated upstream        |
 | `VTreeView`           | `Gtk.TreeView`                          | none                                     | `Gtk.TreeModel`                                  | `#columns` with `VTreeViewColumn`         | deprecated upstream; use `VColumnView`             |
@@ -112,9 +112,10 @@ The bar calls `connectEntry()` on the child. `search-mode-enabled` is two-way th
 prop/event pair (`:search-mode-enabled` + `@update:search-mode-enabled`); `VSearchBar` is not in the
 SFC `v-model` allowlist, so `v-model:search-mode-enabled` is rejected at compile time.
 
-`VActionBar` reads `#start` and `#end`. Like `VHeaderBar`, GTK has no insert-at-index API, so a move
-repacks only that role group with `packStart` / `packEnd`; wrappers keep their identity because the
-VNodes are keyed.
+`VActionBar` reads `#start` and `#end`. Like `VHeaderBar`, the role children live in an internal
+`Gtk.Box`; after the first insert, a keyed move is a public `Gtk.Box.reorderChildAfter()` call, so
+siblings are not detached and wrappers keep their identity. `packStart` / `packEnd` run only for
+the initial empty role group.
 
 `VInfoBar` uses `Gtk.InfoBar.addChild()` for `#content` and
 `Gtk.InfoBar.addActionWidget()` for `#action` (verified on GTK 4.24). `addActionWidget()` warns for

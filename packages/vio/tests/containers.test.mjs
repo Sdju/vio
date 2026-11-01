@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import Gtk from "gi:Gtk-4.0";
 import Gio from "gi:Gio-2.0";
+import GLib from "gi:GLib-2.0";
 import { getGType } from "node-gtk";
 import {
   KeepAlive,
@@ -428,6 +429,93 @@ await test("VHeaderBar: keyed move in #start/#end follows the VNode order and ke
     await nextTick();
     assert.deepEqual(startLabels(), ["B", "C"]);
     assert.equal(buttons.get("a").getParent(), null, "the removed button is detached");
+  } finally {
+    app.unmount();
+  }
+});
+
+await test("VHeaderBar: keyed move inserts in the internal box without repacking neighbours", async () => {
+  const pump = (iterations = 200) => {
+    for (let index = 0; index < iterations; index++) GLib.MainContext.default().iteration(false);
+  };
+  const items = ref(["a", "b", "c", "d"]);
+  const app = mount(() =>
+    h(
+      VWindow,
+      { visible: true, title: "header move" },
+      {
+        default: () =>
+          h(
+            VHeaderBar,
+            { role: "titlebar" },
+            {
+              start: () =>
+                items.value.map((key) => h(VButton, { key }, { default: () => key.toUpperCase() })),
+              title: () => h(VLabel, null, { default: () => "title" }),
+            },
+          ),
+      },
+    ),
+  );
+  try {
+    const window = windowOf(app);
+    const bar = window.getTitlebar();
+    const startBox = headerSections(bar).start;
+    window.present();
+    pump();
+
+    const wrappers = new Map();
+    const buttons = new Map();
+    for (const wrapper of children(startBox)) {
+      if (!(wrapper instanceof Gtk.Box)) continue;
+      const key = labelsIn(wrapper)[0]?.toLowerCase();
+      if (!key) continue;
+      wrappers.set(key, wrapper);
+      buttons.set(key, wrapper.getFirstChild());
+    }
+    assert.deepEqual([...wrappers.keys()], ["a", "b", "c", "d"]);
+
+    // A sibling and the moved child are watched separately: reordering inside the same GtkBox
+    // must not detach either of them from the window root.
+    const rootNotifications = new Map([...wrappers.keys()].map((key) => [key, 0]));
+    const buttonRootNotifications = new Map([...buttons.keys()].map((key) => [key, 0]));
+    for (const [key, wrapper] of wrappers)
+      wrapper.on("notify::root", () => rootNotifications.set(key, rootNotifications.get(key) + 1));
+    for (const [key, button] of buttons)
+      button.on("notify::root", () =>
+        buttonRootNotifications.set(key, buttonRootNotifications.get(key) + 1),
+      );
+
+    window.setFocus(buttons.get("a"));
+    pump();
+    assert.equal(window.getFocus(), buttons.get("a"), "focus starts on the moved button");
+
+    const order = () => labelsIn(startBox);
+    items.value = ["b", "c", "d", "a"];
+    await nextTick();
+    pump();
+    assert.deepEqual(order(), ["B", "C", "D", "A"], "the first item moved to the end");
+    for (const key of ["a", "b", "c", "d"]) {
+      assert.equal(buttons.get(key).getParent(), wrappers.get(key), `${key}: wrapper survived`);
+      assert.equal(rootNotifications.get(key), 0, `${key}: wrapper was not unparented`);
+      assert.equal(buttonRootNotifications.get(key), 0, `${key}: button was not unparented`);
+    }
+    assert.equal(window.getFocus(), buttons.get("a"), "focus survives the move to the end");
+
+    items.value = ["a", "b", "c", "d"];
+    await nextTick();
+    pump();
+    assert.deepEqual(order(), ["A", "B", "C", "D"], "the item moved back to the front");
+    for (const key of ["a", "b", "c", "d"]) {
+      assert.equal(
+        buttons.get(key).getParent(),
+        wrappers.get(key),
+        `${key}: wrapper survived again`,
+      );
+      assert.equal(rootNotifications.get(key), 0, `${key}: no unparent on the way back`);
+      assert.equal(buttonRootNotifications.get(key), 0, `${key}: no unparent on the way back`);
+    }
+    assert.equal(window.getFocus(), buttons.get("a"), "focus survives the move back to the front");
   } finally {
     app.unmount();
   }

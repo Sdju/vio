@@ -28,6 +28,10 @@ import {
   VMessageDialog,
   VPageSetupUnixDialog,
   VPrintUnixDialog,
+  VShortcutsGroup,
+  VShortcutsSection,
+  VShortcutsShortcut,
+  VShortcutsWindow,
   VWindow,
   createApp,
   getWidgetTypes,
@@ -776,6 +780,266 @@ await test("VFileDialog, VColorDialog and VFontDialog reject a missing or dead p
   app.unmount();
 });
 
+await test("VColorDialog accepts a colour and still cancels a second request", () => {
+  const source = `
+    import Gtk from "gi:Gtk-4.0";
+    import Gdk from "gi:Gdk-4.0";
+    import GLib from "gi:GLib-2.0";
+    import { createApp, h, installCss, VColorDialog } from "@zede/vio";
+    Gtk.init();
+    installCss("slider { min-width: 16px; min-height: 16px; }");
+    const pump = (iterations = 200) => {
+      for (let index = 0; index < iterations; index++) GLib.MainContext.default().iteration(false);
+    };
+    const parent = new Gtk.Window({ title: "colour parent" });
+    parent.present();
+    pump();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    pump();
+    const events = [];
+    let handle;
+    const app = createApp({
+      setup: () => () =>
+        h(VColorDialog, {
+          ref: (value) => (handle = value),
+          title: "pick",
+          onColor: (color) => events.push(color),
+        }),
+    });
+    app.mount();
+    const choosing = handle.chooseRgba(parent);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    pump();
+    const dialog = Gtk.Window.listToplevels().find((window) => window instanceof Gtk.Dialog);
+    if (!dialog) throw new Error("the colour dialog did not present a Gtk.Dialog");
+    const accept =
+      dialog.getWidgetForResponse(Gtk.ResponseType.OK) ??
+      dialog.getWidgetForResponse(Gtk.ResponseType.ACCEPT);
+    if (!accept) throw new Error("the colour dialog has no accept button");
+    accept.emit("clicked");
+    pump();
+    const result = await choosing;
+    if (!(result instanceof Gdk.RGBA)) throw new Error("the colour result is not a Gdk.RGBA");
+    if (events.length !== 1 || !(events[0] instanceof Gdk.RGBA))
+      throw new Error("@color did not receive the accepted Gdk.RGBA");
+    if (handle.pending) throw new Error("pending was not cleared after a colour response");
+
+    const cancelled = handle.chooseRgba(parent);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    pump();
+    if (!handle.cancel()) throw new Error("cancel() returned false");
+    if (await cancelled !== null) throw new Error("cancellation did not resolve null");
+    if (handle.pending) throw new Error("pending was not cleared after cancel()");
+    app.unmount();
+    parent.destroy();
+    console.log("color-ok");
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "@zede/vio/register", "--input-type=module", "-e", source],
+    {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+      timeout: 20_000,
+      env: process.env,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "color-ok");
+  assert.doesNotMatch(result.stderr, /Gtk-WARNING|Gtk-CRITICAL/);
+});
+
+await test("VFontDialog presents the native dialog and settles without a rejection", () => {
+  const source = `
+    import Gtk from "gi:Gtk-4.0";
+    import Pango from "gi:Pango-1.0";
+    import GLib from "gi:GLib-2.0";
+    import { createApp, h, installCss, VFontDialog } from "@zede/vio";
+    Gtk.init();
+    installCss("slider { min-width: 16px; min-height: 16px; }");
+    const pump = (iterations = 300) => {
+      for (let index = 0; index < iterations; index++) GLib.MainContext.default().iteration(false);
+    };
+    const parent = new Gtk.Window({ title: "font parent" });
+    parent.present();
+    pump();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    pump();
+    let handle;
+    const app = createApp({
+      setup: () => () => h(VFontDialog, { ref: (value) => (handle = value), title: "pick" }),
+    });
+    app.mount();
+    const pending = handle.chooseFont(parent);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    pump();
+    const dialog = Gtk.Window.listToplevels().find((window) => window instanceof Gtk.Dialog);
+    if (!dialog) throw new Error("the font dialog did not present a Gtk.Dialog");
+    const accept = dialog.getWidgetForResponse(Gtk.ResponseType.OK);
+    let outcome = "font-ok";
+    if (accept?.getSensitive()) {
+      accept.emit("clicked");
+      pump();
+      const result = await pending;
+      if (!(result instanceof Pango.FontDescription))
+        throw new Error("the accepted font is not a Pango.FontDescription");
+    } else {
+      // GTK 4.24.1 on this host lists no fonts ("No Fonts Found") and keeps Select
+      // insensitive. The dialog still appeared, and cancellation must resolve, not reject.
+      if (!handle.cancel()) throw new Error("cancel() returned false");
+      if (await pending !== null) throw new Error("cancellation did not resolve null");
+      outcome = "font-ok-no-fonts";
+    }
+    if (handle.pending) throw new Error("pending was not cleared");
+    app.unmount();
+    parent.destroy();
+    console.log(outcome);
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "@zede/vio/register", "--input-type=module", "-e", source],
+    {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+      timeout: 20_000,
+      env: process.env,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout.trim(), /^font-ok(-no-fonts)?$/);
+  assert.doesNotMatch(result.stderr, /Gtk-WARNING|Gtk-CRITICAL/);
+});
+
+await test("VFileDialog keeps the realized-parent workaround and cancels safely", () => {
+  const source = `
+    import Gtk from "gi:Gtk-4.0";
+    import GLib from "gi:GLib-2.0";
+    import { createApp, h, VFileDialog } from "@zede/vio";
+    Gtk.init();
+    const pump = (iterations = 200) => {
+      for (let index = 0; index < iterations; index++) GLib.MainContext.default().iteration(false);
+    };
+    const parent = new Gtk.Window({ title: "file parent" });
+    parent.present();
+    pump();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    pump();
+    if (!parent.getRealized()) throw new Error("the parent is not realized");
+    let handle;
+    const app = createApp({ setup: () => () => h(VFileDialog, { ref: (value) => (handle = value) }) });
+    app.mount();
+    const immediate = handle.open(parent);
+    if (!handle.cancel()) throw new Error("cancel() returned false");
+    if (await immediate !== null) throw new Error("immediate cancellation did not resolve null");
+
+    const pending = handle.open(parent);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    pump();
+    if (!handle.pending) throw new Error("the second open is not pending");
+    if (!handle.cancel()) throw new Error("cancel() returned false");
+    if (await pending !== null) throw new Error("cancellation did not resolve null");
+    app.unmount();
+    parent.destroy();
+    console.log("file-realized-ok");
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "@zede/vio/register", "--input-type=module", "-e", source],
+    {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+      timeout: 20_000,
+      env: process.env,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "file-realized-ok");
+  assert.doesNotMatch(result.stderr, /Gtk-WARNING|Gtk-CRITICAL/);
+});
+
+await test("VShortcutsWindow shows declarative sections, groups and shortcuts", async () => {
+  const showSecond = ref(true);
+  let section;
+  let group;
+  let shortcut;
+  let second;
+  const app = mount(() =>
+    h(
+      VShortcutsWindow,
+      { visible: true, title: "Keys" },
+      {
+        default: () =>
+          h(
+            VShortcutsSection,
+            {
+              ref: (value) => (section = value),
+              title: "Editing",
+              sectionName: "edit",
+            },
+            {
+              default: () =>
+                h(
+                  VShortcutsGroup,
+                  { ref: (value) => (group = value), title: "Files" },
+                  {
+                    default: () => [
+                      h(VShortcutsShortcut, {
+                        ref: (value) => (shortcut = value),
+                        title: "Open",
+                        accelerator: "<Control>o",
+                      }),
+                      showSecond.value
+                        ? h(VShortcutsShortcut, {
+                            key: "second",
+                            ref: (value) => (second = value),
+                            title: "Save",
+                            accelerator: "<Control>s",
+                          })
+                        : null,
+                    ],
+                  },
+                ),
+            },
+          ),
+      },
+    ),
+  );
+  try {
+    await settle();
+    const window = widgetOf(app);
+    assert.ok(window instanceof Gtk.ShortcutsWindow);
+    assert.ok(section.widget instanceof Gtk.ShortcutsSection);
+    assert.ok(group.widget instanceof Gtk.ShortcutsGroup);
+    assert.ok(shortcut.widget instanceof Gtk.ShortcutsShortcut);
+    assert.equal(section.widget.getProperty("title"), "Editing");
+    assert.equal(section.widget.getProperty("section-name"), "edit");
+    assert.equal(group.widget.getProperty("title"), "Files");
+    assert.equal(shortcut.widget.getProperty("title"), "Open");
+    assert.equal(shortcut.widget.getProperty("accelerator"), "<Control>o");
+    let ancestor = section.widget.getParent();
+    while (ancestor && ancestor !== window) ancestor = ancestor.getParent();
+    assert.equal(ancestor, window, "the section is parented inside the shortcuts window");
+    assert.ok(
+      children(group.widget).some((widget) => widget instanceof Gtk.ShortcutsShortcut),
+      "the shortcut is parented inside its group",
+    );
+    assert.equal(window.getVisible(), true);
+    assert.ok(labelsIn(window).includes("Open"), "the presented window renders the shortcut title");
+
+    const secondWidget = second.widget;
+    showSecond.value = false;
+    await nextTick();
+    await settle();
+    assert.equal(secondWidget.getParent(), null, "a removed shortcut is unparented");
+    assert.ok(
+      children(group.widget).some((widget) => widget === shortcut.widget),
+      "a sibling shortcut stays attached",
+    );
+  } finally {
+    app.unmount();
+  }
+});
+
 await test("wave 3 registrations are appended after the wave 1 and 2 widget types", () => {
   const before = [
     "window",
@@ -822,6 +1086,10 @@ await test("wave 3 registrations are appended after the wave 1 and 2 widget type
     "vio-print-unix-dialog",
     "vio-page-setup-unix-dialog",
     "vio-about-dialog",
+    "vio-shortcuts-window",
+    "vio-shortcuts-section",
+    "vio-shortcuts-group",
+    "vio-shortcuts-shortcut",
   ])
     assert.ok(types.includes(type), `${type} is registered`);
   assert.ok(types.indexOf("vio-dialog") >= before.length);
@@ -837,7 +1105,8 @@ await test("wave 3 components mount and unmount without GTK warnings", () => {
       VAboutDialog, VAlertDialog, VApplicationWindow, VAppChooserDialog, VAssistant,
       VAssistantPage, VColorChooserDialog, VColorDialog, VDialog, VFileChooserDialog,
       VFileChooserNative, VFileDialog, VFontChooserDialog, VFontDialog, VMessageDialog,
-      VPageSetupUnixDialog, VPrintUnixDialog, VWindow,
+      VPageSetupUnixDialog, VPrintUnixDialog, VShortcutsGroup, VShortcutsSection,
+      VShortcutsShortcut, VShortcutsWindow, VWindow,
     } from "@zede/vio";
     Gtk.init();
     writeFileSync("/tmp/vio-dialogs-clean.txt", "hello");
@@ -865,6 +1134,13 @@ await test("wave 3 components mount and unmount without GTK warnings", () => {
         h(VFileDialog, null),
         h(VColorDialog, null),
         h(VFontDialog, null),
+        h(VShortcutsWindow, { title: "keys" }, {
+          default: () => h(VShortcutsSection, { title: "Editing" }, {
+            default: () => h(VShortcutsGroup, { title: "Files" }, {
+              default: () => h(VShortcutsShortcut, { title: "Open", accelerator: "<Control>o" }),
+            }),
+          }),
+        }),
         h(VBox, null, { default: () => h(VLabel, null, { default: () => "root" }) }),
       ],
     });

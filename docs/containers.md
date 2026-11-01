@@ -117,9 +117,14 @@ can see one widget per item:
 
 - `VOverlay` accepts any number of `#overlay` children. Each child is added with a separate
   `Gtk.Overlay.addOverlay()` layer; array order is child order, and later VNodes are on top.
-- `VHeaderBar` keeps `#start` and `#end` in VNode order. `Gtk.HeaderBar` has no insert-at-index API,
-  so a move repacks only that role group with `packStart` / `packEnd`. The widgets are not
-  recreated; `#end` is packed in reverse because GTK prepends there.
+- `VHeaderBar` keeps `#start` and `#end` in VNode order. `Gtk.HeaderBar` has no insert-at-index API
+  of its own, but it places role children in an internal `GtkBox`. After the first child, that box
+  is located through the role child's parent, and `Gtk.Box.insertChildAfter()` /
+  `reorderChildAfter()` insert at the requested position. Only the moved wrapper changes position:
+  siblings are never removed or re-parented, keep their GObject identity and keep keyboard focus.
+  `packStart` / `packEnd` are used only for the initial empty role group; `#end` is packed in
+  reverse there because GTK prepends. `VActionBar` uses the same algorithm (its internal boxes have
+  no window-controls prefix).
 - `VPaned`, `VCenterBox` and `VNotebookPage` keep their single role wrapper. Removing a slot
   detaches it and releases its content.
 - `VFlowBox` preserves the existing `GtkFlowBoxChild` on a move as described above.

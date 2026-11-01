@@ -307,10 +307,25 @@ export function packedRoleState(host: object): PackedRoleState {
   return state;
 }
 
+/** Insert or reorder a widget in a box after `anchor`; `null` means "at the beginning". */
+function placeInBox(
+  box: InstanceType<typeof Gtk.Box>,
+  widget: InstanceType<typeof Gtk.Widget>,
+  anchor: InstanceType<typeof Gtk.Widget> | null,
+): void {
+  if (widget.getParent() === box) box.reorderChildAfter(widget, anchor);
+  else box.insertChildAfter(widget, anchor);
+}
+
 /**
- * `Gtk.HeaderBar` and `Gtk.ActionBar` only expose packStart/packEnd, with no insert-at-index.
- * Rebuild the role group from the VNode order; the widgets themselves are re-packed, so identity
- * and CSS survive. `packEnd` reverses its internal order, hence the reverse iteration for `#end`.
+ * `Gtk.HeaderBar` and `Gtk.ActionBar` only expose packStart/packEnd, but both route role children
+ * into an internal `Gtk.Box` (they are `Gtk.CenterBox` sections). Once the first role child exists,
+ * that box is reachable through its parent and `Gtk.Box.insertChildAfter()` /
+ * `reorderChildAfter()` place a keyed move without detaching any sibling. Only the very first
+ * insertion uses `packStart`/`packEnd`, because no role child exists yet to locate the box.
+ *
+ * `packEnd` prepends, so initial `#end` content is packed in reverse to match the VNode order.
+ * Later placements address the end box directly and keep that order.
  */
 export function repackPackedRole(
   host: InstanceType<typeof Gtk.Widget>,
@@ -322,21 +337,33 @@ export function repackPackedRole(
     end: (widget: InstanceType<typeof Gtk.Widget>) => void;
   },
 ): void {
-  // Both Gtk.HeaderBar and Gtk.ActionBar expose remove(); the base Gtk.Widget type does not.
-  const removable = host as unknown as {
-    remove(widget: InstanceType<typeof Gtk.Widget>): void;
-  };
-  for (const widget of state[role]) if (isInside(widget, host)) removable.remove(widget);
-  state[role] = [];
-  if (role === "start") {
-    for (const widget of desired) {
-      pack.start(widget);
-      state.start.push(widget);
+  const anchorWidget = state[role].find((widget) => isInside(widget, host));
+  const box = anchorWidget?.getParent();
+  if (!(box instanceof Gtk.Box)) {
+    if (role === "start") {
+      for (const widget of desired) pack.start(widget);
+    } else {
+      for (let index = desired.length - 1; index >= 0; index--) pack.end(desired[index]!);
     }
-  } else {
-    for (let index = desired.length - 1; index >= 0; index--) pack.end(desired[index]!);
-    state.end.push(...desired);
+    state[role] = [...desired];
+    return;
   }
+
+  // `#start` children follow the header's window controls; `#end` children start at index 0.
+  const roleWidgetsInBox = new Set([...state[role], ...desired]);
+  let anchor: InstanceType<typeof Gtk.Widget> | null = null;
+  if (role === "start") {
+    for (let child = box.getFirstChild(); child; child = child.getNextSibling()) {
+      if (roleWidgetsInBox.has(child)) break;
+      anchor = child;
+    }
+  }
+  for (const widget of desired) {
+    const next = anchor ? anchor.getNextSibling() : box.getFirstChild();
+    if (widget.getParent() !== box || next !== widget) placeInBox(box, widget, anchor);
+    anchor = widget;
+  }
+  state[role] = [...desired];
 }
 
 define("vio-header-bar", {

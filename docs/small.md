@@ -39,8 +39,9 @@ Wave 6 adds `VAppChooserButton` and `VAppChooserWidget` in
 `packages/vio/src/modules/gtk/app-chooser.ts`: their construct-only `content-type` is passed through
 the `WidgetDefinition.constructProps` hook, so no `GLib-GObject-CRITICAL` is logged. The same hook
 also makes `<gtk-app-chooser-button content-type="…" />` and
-`<gtk-app-chooser-widget content-type="…" />` work. `Gtk.ShortcutsWindow` remains intentionally
-unwrapped (see [`widgets.md`](widgets.md)).
+`<gtk-app-chooser-widget content-type="…" />` work. `Gtk.ShortcutsWindow` and its public
+section/group/shortcut widgets have dedicated `V*` wrappers (see
+[`dialogs.md`](dialogs.md#shortcuts-window)).
 
 ## Frames and viewports
 

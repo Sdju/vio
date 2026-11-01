@@ -207,16 +207,16 @@ embedded in `packages/vio/src/modules/gtk/introspected.ts` so the runtime does n
 
 ### Containers that are now declarative
 
-| Container       | Implemented as                        | Placement API                                                |
-| --------------- | ------------------------------------- | ------------------------------------------------------------ |
-| `Gtk.Notebook`  | `VNotebook` + `VNotebookPage`         | `appendPage`, `reorderChild`, `setTabLabel`, `removePage`    |
-| `Gtk.Paned`     | `VPaned`                              | `setStartChild` / `setEndChild`                              |
-| `Gtk.Overlay`   | `VOverlay`                            | `setChild` / ordered `addOverlay` / `removeOverlay`          |
-| `Gtk.HeaderBar` | `VHeaderBar` (also `role="titlebar"`) | `packStart` / `packEnd` / `setTitleWidget` / repack on moves |
-| `Gtk.CenterBox` | `VCenterBox`                          | `setStartWidget` / `setCenterWidget` / `setEndWidget`        |
-| `Gtk.FlowBox`   | `VFlowBox`                            | `append` / `insert` / `remove`; wrapper survives moves       |
-| `Gtk.Fixed`     | `VFixed`                              | `put` / `move` / `remove`, positions from `x` / `y` props    |
-| `Gtk.Window`    | existing `VWindow`                    | `setChild`, plus `setTitlebar` for `role="titlebar"`         |
+| Container       | Implemented as                        | Placement API                                               |
+| --------------- | ------------------------------------- | ----------------------------------------------------------- |
+| `Gtk.Notebook`  | `VNotebook` + `VNotebookPage`         | `appendPage`, `reorderChild`, `setTabLabel`, `removePage`   |
+| `Gtk.Paned`     | `VPaned`                              | `setStartChild` / `setEndChild`                             |
+| `Gtk.Overlay`   | `VOverlay`                            | `setChild` / ordered `addOverlay` / `removeOverlay`         |
+| `Gtk.HeaderBar` | `VHeaderBar` (also `role="titlebar"`) | `packStart` / `packEnd` / `setTitleWidget` / same-box moves |
+| `Gtk.CenterBox` | `VCenterBox`                          | `setStartWidget` / `setCenterWidget` / `setEndWidget`       |
+| `Gtk.FlowBox`   | `VFlowBox`                            | `append` / `insert` / `remove`; wrapper survives moves      |
+| `Gtk.Fixed`     | `VFixed`                              | `put` / `move` / `remove`, positions from `x` / `y` props   |
+| `Gtk.Window`    | existing `VWindow`                    | `setChild`, plus `setTitlebar` for `role="titlebar"`        |
 
 The components live in `packages/vio/src/modules/gtk/containers.ts` and are exported from
 `@zede/vio`. Details and examples: [`docs/containers.md`](containers.md).
@@ -399,8 +399,16 @@ These are real today and are not planned as renderer changes:
   GTK does not warn about `setTitlebar()` on a realized window.
 - **`HeaderBar` internal parenting.** `packStart`/`packEnd` place children inside an internal
   `GtkBox`, not directly under the header bar. Membership checks therefore walk ancestors, not
-  `getParent()`. A keyed move repacks the affected role group because GTK has no insert-at-index;
-  widget identity is preserved, but focus inside that group may be reset.
+  `getParent()`. After the first child, the internal box is located through an existing role
+  child's parent and keyed moves use the public `Gtk.Box.insertChildAfter()` /
+  `reorderChildAfter()` methods. Only the moved wrapper is reordered; siblings are not detached,
+  keep their GObject identity and focus, and `packStart`/`packEnd` run only for the initial,
+  empty role group. See [`containers.md`](containers.md#slot-order-multiple-overlays-and-removal).
+  `Gtk.ActionBar` uses the same helper; it has no fixed window-controls prefix.
+- **Packed role ordering is linear.** A keyed `#start`/`#end` move is placed relative to the
+  previous VNode in that role; a full reverse is applied one child at a time, so every step is a
+  same-parent reorder. There is no cross-role move primitive (moving a child from `#start` to
+  `#end` goes through the normal insert path and is not animated).
 - **String enum table.** Only the enums in `driver.ts` accept strings; other enums must be passed as
   GI integers.
 - **No HTML layout engine.** DOM directives (`v-html`, `v-text`), DOM event modifiers, CSS
@@ -417,7 +425,8 @@ rules and async cancellation contract are in [`dialogs.md`](dialogs.md). The non
 - **Async dialogs need a live parent.** `choose(parent)`/`open(parent)` throw
   `vio: … requires a Gtk.Window parent` or `vio: … parent window has been destroyed`. Liveness is
   checked with `Gtk.Window.listToplevels()`, which includes unrealized windows and drops destroyed
-  ones. There is no portal fallback and no "parent-less" async mode.
+  ones. vio has no "parent-less" async mode; `Gtk.FileDialog` itself may still route the request
+  through the desktop portal.
 - **One pending operation per controller.** A second `choose()`/`open()` while the first is pending
   throws. `cancel()` or unmount resolves the Promise with `null` immediately and cancels the
   `Gio.Cancellable`; a late native callback is ignored, so cancellation never becomes an unhandled
@@ -426,7 +435,28 @@ rules and async cancellation contract are in [`dialogs.md`](dialogs.md). The non
   `gtk_file_dialog_open()` and cancelling immediately aborts the process. `VFileDialog` validates
   the parent but passes it to GTK only while the parent is unrealized; a realized parent yields an
   unparented native dialog. Color, font and alert dialogs pass the parent normally. This is a GTK
-  defect verified on 4.24.1, not a renderer limit.
+  defect verified on 4.24.1, not a renderer limit. The workaround is covered by a child-process test
+  that presents the parent, calls `open()` twice and cancels both requests without a crash.
+- **`VFileDialog` success is portal-owned on this host.** `Gtk.FileDialog` routes `OpenFile` through
+  `org.freedesktop.portal.Desktop` (version 4) when a session bus is available. The local
+  `GtkFileChooserDialog` object remains unrealized (`getVisible() === false`) while the visible
+  chooser is created by `org.freedesktop.impl.portal.desktop.gtk` in another process. There is no
+  in-process button or response to activate, so a success test would only be possible by scripting
+  the remote portal UI. `VFileDialog`'s success path is therefore exercised on hosts that do not use
+  the portal; this host tests parent validation, the SIGSEGV workaround, cancellation and the
+  portal request itself. The D-Bus evidence is in [`dialogs.md`](dialogs.md#async-dialogs).
+- **`VColorDialog` success is in-process.** `Gtk.ColorDialog` creates a real
+  `GtkColorChooserDialog` in this process; `VColorDialog` resolves with the accepted `Gdk.RGBA`
+  (and emits `@color`). The dialog's internal sliders log
+  `GtkGizmo … reported min width -2` on this theme; the test installs the same local
+  `slider { min-width: 16px; min-height: 16px; }` rule used by `demo:small`. The library does not
+  install global CSS.
+- **`VFontDialog` cannot return a font on this host.** GTK's `GtkFontChooserWidget` renders
+  `No Fonts Found` despite 2378 `fc-list` entries; `getFont()` stays `null`, `setFont()` has no
+  effect and the Select response is insensitive. The async dialog still presents, and its Promise
+  resolves `null` only through cancellation rather than rejecting. The test asserts the dialog
+  appears and settles without a rejection, and switches to a real `Pango.FontDescription` assertion
+  when the font list is populated. This is a GTK 4.24.1/environment defect, not a vio wrapper.
 - **`Gtk.FileChooserDialog` needs realization for `response`.** On 4.24, `emit("response", …)` and
   button clicks on an unrealized file chooser do not reach the signal; presenting it works but
   emits unrelated GTK slider warnings in this environment. Tests inspect its properties and leave
@@ -450,12 +480,19 @@ rules and async cancellation contract are in [`dialogs.md`](dialogs.md). The non
   the removed page parented to GTK's internal `GtkStack`; the `vio-assistant` placement hook calls
   `unparent()` on the removed page so the subtree is released immediately (covered by a child-process
   test that asserts no `Gtk-CRITICAL`).
-- **`VShortcutsWindow` is not wrapped.** The window is only a shell; its content is
-  `ShortcutsSection`/`ShortcutsGroup` (internal display parts) and non-widget `Gtk.Shortcut`
-  resources. Wrapping those would violate the wave 3 rule against wrapping internal parts, so the
-  raw `gtk-shortcuts-window` element remains the escape hatch.
-- **Portal and GtkBuildable behaviour.** `Gtk.FileDialog` still depends on the desktop portal/D-Bus.
-  `GtkBuildable` XML, custom GObject properties and symbol props remain unsupported.
+- **`VShortcutsWindow` is wrapped, with append-only ordering.** The earlier claim that
+  `Gtk.ShortcutsSection`/`Gtk.ShortcutsGroup` are internal parts was wrong. On GTK 4.24 both are
+  public, constructible `Gtk.Box` subclasses; `Gtk.ShortcutsWindow.addSection()`,
+  `Gtk.ShortcutsSection.addGroup()` and `Gtk.ShortcutsGroup.addShortcut()` are public methods, and
+  the result renders normally (see [`dialogs.md`](dialogs.md#shortcuts-window)). `VShortcutsWindow`,
+  `VShortcutsSection`, `VShortcutsGroup` and `VShortcutsShortcut` cover that tree. `Gtk.Shortcut`
+  (a non-widget `GObject`) is still not wrapped: use a `Gtk.Shortcut` in `setup` for action
+  accelerators. The add methods only append, so keyed reordering of sections/groups/shortcuts is
+  not implemented; recreate the subtree or use the raw `.widget` for a different order.
+- **Portal and GtkBuildable behaviour.** `Gtk.FileDialog` uses
+  `org.freedesktop.portal.FileChooser` over D-Bus when the portal is available; on a host without a
+  session bus or portal it falls back to the local chooser. `GtkBuildable` XML, custom GObject
+  properties and symbol props remain unsupported.
 - **Deprecated wrappers.** `Gtk.Dialog`, `Gtk.MessageDialog`, `Gtk.FileChooserDialog`,
   `Gtk.FileChooserNative`, `Gtk.ColorChooserDialog`, `Gtk.FontChooserDialog`,
   `Gtk.AppChooserDialog` and `Gtk.Assistant` are deprecated since GTK 4.10. The wrappers work on

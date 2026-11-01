@@ -144,6 +144,10 @@ wave 1 and wave 2 types unchanged:
 | `vio-print-unix-dialog`      | `VPrintUnixDialog`     | `Gtk.PrintUnixDialog`     | no widget children              |
 | `vio-page-setup-unix-dialog` | `VPageSetupUnixDialog` | `Gtk.PageSetupUnixDialog` | no widget children              |
 | `vio-about-dialog`           | `VAboutDialog`         | `Gtk.AboutDialog`         | no widget children              |
+| `vio-shortcuts-window`       | `VShortcutsWindow`     | `Gtk.ShortcutsWindow`     | sections via `addSection()`     |
+| `vio-shortcuts-section`      | `VShortcutsSection`    | `Gtk.ShortcutsSection`    | groups via `addGroup()`         |
+| `vio-shortcuts-group`        | `VShortcutsGroup`      | `Gtk.ShortcutsGroup`      | rows via `addShortcut()`        |
+| `vio-shortcuts-shortcut`     | `VShortcutsShortcut`   | `Gtk.ShortcutsShortcut`   | no widget children              |
 
 `VFileChooserNative`, `VAlertDialog`, `VFileDialog`, `VColorDialog`, `VFontDialog` and
 `VAppChooserDialog` are null-rendering controllers; they do not register element types. The raw
@@ -155,9 +159,10 @@ Deprecations: `Gtk.Dialog`, `Gtk.MessageDialog`, `Gtk.FileChooserDialog`,
 `Gtk.FileChooserNative`, `Gtk.ColorChooserDialog`, `Gtk.FontChooserDialog`,
 `Gtk.AppChooserDialog` and `Gtk.Assistant` are deprecated since GTK 4.10. The wave 3 wrappers stay
 functional on 4.24 and point at `Gtk.AlertDialog`, `Gtk.FileDialog`, `Gtk.ColorDialog` and
-`Gtk.FontDialog` for new code. `Gtk.ShortcutsWindow` is intentionally not wrapped; its content is
-built from internal `ShortcutsSection`/`ShortcutsGroup` parts and non-widget `Gtk.Shortcut`
-resources.
+`Gtk.FontDialog` for new code. `Gtk.ShortcutsWindow` is wrapped together with its public
+`GtkShortcutsSection`/`GtkShortcutsGroup`/`GtkShortcutsShortcut` widgets; the non-widget
+`Gtk.Shortcut` resource remains imperative. See
+[`dialogs.md`](dialogs.md#shortcuts-window).
 
 ### Wave 4: media, canvas and value pickers
 

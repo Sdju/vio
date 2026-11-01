@@ -32,8 +32,12 @@ Everything here was exercised on **GTK 4.24.1** (`Gtk.getMajorVersion()` 4,
 | `VAboutDialog`         | `Gtk.AboutDialog`                | none                   | none                               | `logo` is an icon name                                         |
 | `VAlertDialog`         | `Gtk.AlertDialog` (not a widget) | none                   | none (controller)                  | `choose(parent)` requires a live parent                        |
 | `VFileDialog`          | `Gtk.FileDialog` (not a widget)  | none                   | none (controller)                  | parent workaround below; requires a live parent                |
-| `VColorDialog`         | `Gtk.ColorDialog` (not a widget) | none                   | none (controller)                  | requires a live parent                                         |
-| `VFontDialog`          | `Gtk.FontDialog` (not a widget)  | none                   | none (controller)                  | requires a live parent                                         |
+| `VColorDialog`         | `Gtk.ColorDialog` (not a widget) | none                   | none (controller)                  | requires a live parent; resolves `Gdk.RGBA`                    |
+| `VFontDialog`          | `Gtk.FontDialog` (not a widget)  | none                   | none (controller)                  | requires a live parent; font readback may be empty (below)     |
+| `VShortcutsWindow`     | `Gtk.ShortcutsWindow`            | none                   | `VShortcutsSection` children       | sections are append-only                                       |
+| `VShortcutsSection`    | `Gtk.ShortcutsSection`           | none                   | `VShortcutsGroup` children         | groups are append-only                                         |
+| `VShortcutsGroup`      | `Gtk.ShortcutsGroup`             | none                   | `VShortcutsShortcut` children      | shortcuts are append-only                                      |
+| `VShortcutsShortcut`   | `Gtk.ShortcutsShortcut`          | none                   | none                               | one native shortcut row; no `Gtk.Shortcut` resource            |
 
 `VDialog` also exports `DialogButton` and `ResponseId`; `VFileDialog` and
 `VFileChooserDialog`/`VFileChooserNative` accept `FileFilterInput` — either a real
@@ -217,8 +221,12 @@ Each controller also exposes `open()` aliases where sensible (`VColorDialog.open
   GTK 4.24.1/X11 nevertheless aborts (`SIGSEGV`) when `gtk_file_dialog_open()` receives a
   **realized** parent and the operation is cancelled immediately. `VFileDialog` therefore validates
   the parent but passes it to GTK only while it is unrealized; a realized parent makes the native
-  dialog unparented. This is a verified GTK defect, not a vio limitation. Color, font and alert
+  dialog unparented. This is a verified GTK defect, not a vio limitation, and the workaround is
+  covered by a child-process test with immediate and delayed cancellation. Color, font and alert
   dialogs use the parent normally.
+- Success paths and the portal split are covered in [Async dialogs](#async-dialogs). In short:
+  alert and colour resolve in-process, font depends on GTK's font list, and a portal-backed file
+  dialog has no in-process widget to accept.
 
 ## Deprecated upstream and replacements
 
@@ -236,23 +244,92 @@ Each controller also exposes `open()` aliases where sensible (`VColorDialog.open
 The wrappers stay functional on 4.24 and are documented as compatibility surfaces. New code
 should prefer the non-deprecated controller components.
 
-## `VShortcutsWindow` was deliberately not wrapped
+## Shortcuts window
 
-`Gtk.ShortcutsWindow` is just a window shell; its content is a tree of
-`Gtk.ShortcutsSection` → `Gtk.ShortcutsGroup` → `Gtk.Shortcut`. `Gtk.Shortcut` is not a widget, and
-the section/group classes are internal display parts, not user content. A wrapper without
-declarative section/group/shortcut resources would accept a window and nothing useful to put in
-it, while wrapping the internal parts would violate the wave 3 rule against wrapping
-`ShortcutsGroup`/`ShortcutsSection`. The raw `gtk-shortcuts-window` element remains available for
-imperative use through `.widget`; no `VShortcutsWindow` is exported.
+The earlier conclusion that the shortcuts tree is internal was incorrect. Verified on GTK 4.24.1
+with GObject Introspection and construction:
+
+```bash
+$ node --import @zede/vio/register --input-type=module -e 'import Gtk from "gi:Gtk-4.0"; import GObject from "gi:GObject-2.0"; import {getGType} from "node-gtk"; for (const n of ["ShortcutsSection","ShortcutsGroup","ShortcutsShortcut"]) { const t=getGType(Gtk[n]); console.log(GObject.typeName(t), "parent="+GObject.typeName(GObject.typeParent(t))); }'
+GtkShortcutsSection parent=GtkBox
+GtkShortcutsGroup parent=GtkBox
+GtkShortcutsShortcut parent=GtkWidget
+```
+
+All three are public constructible widgets with introspected properties. Placement uses the
+public methods:
+
+| Component            | Native                  | Placement                                                                                     |
+| -------------------- | ----------------------- | --------------------------------------------------------------------------------------------- |
+| `VShortcutsWindow`   | `Gtk.ShortcutsWindow`   | `addSection()`, sections are `VShortcutsSection` children                                     |
+| `VShortcutsSection`  | `Gtk.ShortcutsSection`  | `addGroup()`, groups are `VShortcutsGroup` children                                           |
+| `VShortcutsGroup`    | `Gtk.ShortcutsGroup`    | `addShortcut()`, rows are `VShortcutsShortcut` children                                       |
+| `VShortcutsShortcut` | `Gtk.ShortcutsShortcut` | leaf; `title`, `subtitle`, `accelerator`, `icon`, `action-name`, `direction`, `shortcut-type` |
+
+```vue
+<VShortcutsWindow title="Shortcuts" :visible="showShortcuts" @close-request="closeShortcuts">
+  <VShortcutsSection title="Editing" section-name="editing">
+    <VShortcutsGroup title="Files">
+      <VShortcutsShortcut title="Open" accelerator="&lt;Control&gt;o" />
+      <VShortcutsShortcut title="Save" accelerator="&lt;Control&gt;s" />
+    </VShortcutsGroup>
+  </VShortcutsSection>
+</VShortcutsWindow>
+```
+
+The components keep the element ref and `.widget`, like the other containers. All three `add*`
+methods append, so keyed reordering is not implemented: recreate the subtree or manipulate the raw
+`.widget` when a different order is required. `Gtk.Shortcut` is a non-widget `GObject` and stays an
+imperative resource for action accelerators; `VShortcutsShortcut` is the visual row only.
+
+## Async dialogs
+
+`VAlertDialog`, `VColorDialog` and `VFontDialog` present in-process GTK dialogs, so their success
+paths are testable without a portal:
+
+- **`VAlertDialog`** resolves the button index after the internal `Gtk.Dialog` response is
+  activated, and still supports `cancel()`, a repeated `choose()` and unmount cancellation.
+- **`VColorDialog`** resolves a `Gdk.RGBA` and emits `@color`. On this theme the internal colour
+  sliders log `GtkGizmo … reported min width -2`; the test installs
+  `slider { min-width: 16px; min-height: 16px; }` through `installCss()`. The library does not
+  install that rule globally. A second `chooseRgba()` still cancels to `null`.
+- **`VFontDialog`** presents `GtkFontChooserDialog`, but this host's GTK renders `No Fonts Found`
+  (2378 `fc-list` entries exist), `getFont()` stays `null`, and the Select button is insensitive.
+  The dialog therefore settles through cancellation (`null`) instead of rejecting, and the test
+  switches to a `Pango.FontDescription` assertion when GTK lists fonts. This is the same
+  `GtkFontChooserWidget` readback defect documented in [`small.md`](small.md).
+
+**`VFileDialog` and the portal.** On this machine the portal is present:
+
+```bash
+$ echo "$DBUS_SESSION_BUS_ADDRESS"
+unix:path=/run/user/1000/bus
+$ busctl --user list | grep -E 'org\.freedesktop\.portal\.Desktop |org\.freedesktop\.impl\.portal\.desktop\.gtk '
+org.freedesktop.impl.portal.desktop.gtk  1458 ... :1.62 ...
+org.freedesktop.portal.Desktop           1367 ... :1.50 ...
+$ gdbus call --session --dest org.freedesktop.portal.Desktop \
+    --object-path /org/freedesktop/portal/desktop \
+    --method org.freedesktop.DBus.Properties.Get \
+    org.freedesktop.portal.FileChooser version
+(<uint32 4>,)
+```
+
+`dbus-monitor` during `Gtk.FileDialog.open()` shows
+`org.freedesktop.portal.FileChooser.OpenFile`. The local `GtkFileChooserDialog` object stays
+unrealized (`getVisible() === false`) while the visible chooser belongs to
+`org.freedesktop.impl.portal.desktop.gtk` in another process. There is no in-process button to
+activate, so a success test would require scripting the remote portal UI; the test suite covers
+the realized-parent SIGSEGV workaround, immediate and delayed cancellation, and the portal request
+itself.
 
 ## What is not expressible
 
 - Nested main loops or a blocking `run()` on a dialog. Async dialogs return Promises; tests and
   applications drive the existing GLib loop.
-- Portal/desktop-environment behaviour of `Gtk.FileDialog` (D-Bus, xdg-desktop-portal). vio
-  cannot make a missing portal work.
-- `GtkBuildable` XML and `Gtk.Shortcuts*` internal parts.
+- A scripted success response from the desktop portal. `Gtk.FileDialog` delegates presentation to
+  `org.freedesktop.impl.portal.desktop.*`; vio can only cancel the request.
+- `GtkBuildable` XML.
+- Keyed reordering of `Gtk.Shortcuts*` sections, groups or shortcuts: the public API is append-only.
 - Parent-dependent async calls without a live `Gtk.Window`.
 - Changing construct-only `Gtk.AppChooserDialog` properties after construction.
 - Observing a raw `Gtk.Widget.destroy` signal on GTK 4.24.
