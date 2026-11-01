@@ -1,7 +1,7 @@
 import Gtk from "gi:Gtk-4.0";
 import Gdk from "gi:Gdk-4.0";
 import Pango from "gi:Pango-1.0";
-import { normalizeClass, normalizeStyle } from "@vue/runtime-core";
+import { markRaw, normalizeClass, normalizeStyle } from "@vue/runtime-core";
 import { toKebab, type VioDriver, type VioElement, type VioNode } from "../renderer/index.ts";
 import type { NativeObject, Widget } from "../renderer/index.ts";
 import {
@@ -67,6 +67,32 @@ const definitions = new Map<string, WidgetDefinition>([
 const lookup = (type: string): WidgetDefinition | undefined =>
   definitions.get(type) ?? (type === "div" ? storageDefinition : resolveIntrospected(type));
 
+const toCamel = (key: string) =>
+  key.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase());
+
+/**
+ * Collect the declared construct-only props under the camelCase names node-gtk accepts in a
+ * constructor. Templates keep kebab-case keys for native elements, while `h()` usually passes
+ * camelCase; both spellings are accepted.
+ */
+function constructorProps(
+  definition: WidgetDefinition,
+  props: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!definition.constructProps?.length || !props) return undefined;
+  const result: Record<string, unknown> = {};
+  for (const name of definition.constructProps) {
+    const camel = toCamel(name);
+    const value = props[camel] ?? props[name];
+    if (value !== undefined && value !== null) result[camel] = value;
+  }
+  return Object.keys(result).length ? result : undefined;
+}
+
+/** True when a kebab-case property is construct-only for this definition. */
+const isConstructProp = (definition: WidgetDefinition | undefined, property: string) =>
+  definition?.constructProps?.includes(property) ?? false;
+
 /** Extend vio with an introspected GTK/Adwaita class without changing its reconciler. */
 export function registerWidget(type: string, definition: WidgetDefinition) {
   if (definitions.has(type)) throw new Error(`vio: widget '${type}' is already registered`);
@@ -75,6 +101,12 @@ export function registerWidget(type: string, definition: WidgetDefinition) {
   for (const hook of ["insertChild", "removeChild"] as const)
     if (definition[hook] !== undefined && typeof definition[hook] !== "function")
       throw new Error(`vio: '${type}' ${hook} must be a function`);
+  if (
+    definition.constructProps !== undefined &&
+    (!Array.isArray(definition.constructProps) ||
+      !definition.constructProps.every((name) => typeof name === "string"))
+  )
+    throw new Error(`vio: '${type}' constructProps must be an array of property names`);
   definitions.set(type, definition);
 }
 
@@ -255,6 +287,31 @@ const nullSetters: Record<string, string> = {
 };
 const metadataProps = new Set(["role", "tab-label", "page", "slot-container"]);
 
+/**
+ * Replace a not-yet-inserted widget when a construct-only prop arrives after `createElement()`.
+ * Vue's normal path passes vnode props to `createElement()`, so this is a compatibility path for
+ * manually built nodes and for renderers that create elements before their props are known.
+ */
+function recreateWidget(node: VioElement, definition: WidgetDefinition) {
+  const previous = node.widget;
+  const state = states.get(node);
+  state?.removeStyle?.();
+  states.delete(node);
+  node.widget = markRaw(definition.create(constructorProps(definition, node.props)));
+  if (previous instanceof Gtk.Widget && node.widget instanceof Gtk.Widget)
+    for (const name of previous.getCssClasses()) node.widget.addCssClass(name);
+  // The old disconnect closures still point at the replaced native object.
+  for (const binding of node.events.values()) {
+    binding.disconnect();
+    binding.disconnect = gtkDriver.connect(node, binding.signal, binding.callback);
+  }
+  for (const [prop, value] of Object.entries(node.props)) {
+    if (/^on[^a-z]/.test(prop) || metadataProps.has(prop)) continue;
+    if (isConstructProp(definition, toKebab(toCamel(prop)))) continue;
+    gtkDriver.patchProp(node, prop, undefined, value);
+  }
+}
+
 let mountDepth = 0;
 const pendingVisible = new Set<VioNode>();
 
@@ -274,7 +331,7 @@ export const gtkDriver: VioDriver = {
     if (mountDepth > 0) mountDepth--;
     if (mountDepth === 0) flushVisibleWindows();
   },
-  create(type) {
+  create(type, props) {
     const definition = lookup(type);
     if (!definition) {
       if (hasGtkClass(type)) throw new Error(`vio: '${type}' is not a Gtk.Widget`);
@@ -283,7 +340,7 @@ export const gtkDriver: VioDriver = {
         `vio: unknown widget '${type}'; no such Gtk class. Did you mean ${suggestions.join(", ")}?`,
       );
     }
-    return definition.create();
+    return definition.create(constructorProps(definition, props));
   },
   createText: (text) => new Gtk.Label({ label: text, xalign: 0 }),
   insert(node, parent, before) {
@@ -457,6 +514,21 @@ export const gtkDriver: VioDriver = {
       value = enumValues[camelKey]![value];
     }
     const property = key === "id" ? "name" : toKebab(camelKey);
+    const definition = definitionOf(node);
+    if (isConstructProp(definition, property)) {
+      // The normal path already passed this value to createElement(); skip a repeated setProperty,
+      // which GTK would report as a GLib-GObject-CRITICAL. A real change is rejected explicitly.
+      if (value == null || Object.is(native(node).getProperty(property), value)) return;
+      const wasConstructed = node.constructed?.has(key) || node.constructed?.has(property) || false;
+      const constructed = node.constructed?.get(key) ?? node.constructed?.get(property);
+      if (wasConstructed && Object.is(constructed, value)) return;
+      if (node.parent)
+        throw new Error(
+          `vio: '${node.type}' property '${property}' is construct-only and cannot change after the widget is inserted`,
+        );
+      recreateWidget(node, definition!);
+      return;
+    }
     if (!state.defaults.has(property))
       state.defaults.set(property, native(node).getProperty(property));
     const next = value == null ? state.defaults.get(property) : value;

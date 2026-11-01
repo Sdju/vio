@@ -45,6 +45,22 @@ Explicit registrations always win: the built-in types (`window`, `box`, `label`,
 `spinner`, `switch`, `check-button`, `key-controller`, the `vio-*` containers and `list-view`) keep
 their behavior and their order in `getWidgetTypes()`.
 
+## Construct-only properties
+
+Some GTK properties may only be passed to the constructor. The introspected definition carries a
+`constructProps` list generated from `GParamFlags.CONSTRUCT_ONLY`, and the renderer passes the VNode
+props to `createElement()`/`WidgetDefinition.create(props?)`:
+
+```vue
+<gtk-app-chooser-button content-type="image/png" />
+<gtk-app-chooser-widget content-type="image/png" :show-all="true" />
+```
+
+The value is applied by `new Gtk.AppChooserButton({ contentType: "image/png" })`; a repeated
+`setProperty()` is skipped, and a later change throws a clear `construct-only` error. Every widget
+also inherits construct-only `css-name`. The complete class → property table and the extension
+contract are in [`limitations.md`](limitations.md#construct-only-properties).
+
 ## Explicit registry vs introspection
 
 |                       | Explicit registry                           | Introspection                                  |

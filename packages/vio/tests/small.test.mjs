@@ -31,6 +31,7 @@ import {
   createApp,
   getWidgetTypes,
   h,
+  installCss,
   nextTick,
   shallowRef,
 } from "@zede/vio";
@@ -770,4 +771,121 @@ await test("window-hosted scale popups forward popdown without warnings", () => 
   const report = JSON.parse(result.stdout.trim());
   assert.equal(report.realized, true);
   assert.deepEqual(report.events, ["popdown"]);
+});
+
+await test("VEmojiChooser and VScaleButton open and close real popups in a window", () => {
+  const source = `
+    import Gtk from "gi:Gtk-4.0";
+    import GLib from "gi:GLib-2.0";
+    import {
+      createApp, h, installCss, VWindow, VBox, VEmojiChooser, VScaleButton,
+    } from "@zede/vio";
+    Gtk.init();
+    installCss("slider { min-width: 16px; min-height: 16px; }");
+    const pump = (n = 200) => { for (let index = 0; index < n; index++) GLib.MainContext.default().iteration(false); };
+    const waitFor = (predicate, timeout = 1000) => {
+      const end = Date.now() + timeout;
+      while (Date.now() < end) {
+        pump(30);
+        if (predicate()) return true;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+      }
+      return predicate();
+    };
+    const events = [];
+    let emoji;
+    let scale;
+    const app = createApp({
+      setup: () => () => h(VWindow, { title: "popups", defaultWidth: 320, defaultHeight: 240, visible: true }, {
+        default: () => h(VBox, { orientation: 1, spacing: 8 }, {
+          default: () => [
+            h(VEmojiChooser, {
+              ref: (value) => (emoji = value),
+              onEmojiPicked: (text) => {
+                events.push(["emoji", text]);
+              },
+            }),
+            h(VScaleButton, {
+              ref: (value) => (scale = value),
+              value: 0.5,
+              onValueChanged: (value) => {
+                events.push(["value", value]);
+              },
+              onPopdown: () => {
+                events.push(["popdown"]);
+              },
+            }),
+          ],
+        }),
+      }),
+    });
+    app.mount();
+    const end = Date.now() + 600;
+    while (Date.now() < end) {
+      pump(30);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
+    }
+    const emojiWidget = emoji.widget;
+    const parent = emojiWidget.getParent();
+    waitFor(() => emojiWidget.getMapped());
+    const emojiOpened = emoji.popup();
+    const emojiVisible = waitFor(() => emojiWidget.getVisible());
+    emojiWidget.emit("emoji-picked", "😀");
+    pump(20);
+    emoji.popdown();
+    const emojiHidden = waitFor(() => !emojiWidget.getVisible());
+
+    const scaleWidget = scale.widget;
+    waitFor(() => scaleWidget.getMapped());
+    const scaleOpened = scale.popup();
+    const scaleVisible = waitFor(() => scale.popoverVisible);
+    scaleWidget.getAdjustment().setValue(0.75);
+    pump(80);
+    scale.popdown();
+    const scaleHidden = waitFor(() => !scale.popoverVisible);
+    console.log(JSON.stringify({
+      parent: parent?.constructor?.name ?? null,
+      realized: emojiWidget.getRealized(),
+      emojiOpened,
+      emojiVisible,
+      emojiHidden,
+      scaleOpened,
+      scaleVisible,
+      scaleHidden,
+      events,
+    }));
+    app.unmount();
+    pump();
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "@zede/vio/register", "--input-type=module", "-e", source],
+    {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+      timeout: 20_000,
+      env: process.env,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stderr, /Gtk-CRITICAL/);
+  assert.doesNotMatch(result.stderr, /GLib-CRITICAL|GLib-GObject-CRITICAL|Gdk-CRITICAL/);
+  // GTK 4.24.1 on this display reports a negative minimum slider size unless CSS gives it a
+  // concrete size. The test installs that rule, so GtkGizmo warnings must stay absent.
+  assert.doesNotMatch(result.stderr, /Gtk-WARNING/);
+  // The only remaining line is a GTK 4.24 frame-clock warning; see docs/limitations.md.
+  for (const line of result.stderr.split(/\r?\n/))
+    if (/(?:Gtk|GLib|Gdk)-(?:WARNING|CRITICAL)/.test(line))
+      assert.match(line, /Gdk-WARNING.*gdk_frame_timings_submitted\(\) called on submitted frame/);
+  const report = JSON.parse(result.stdout.trim());
+  assert.equal(report.realized, true);
+  assert.equal(report.parent, "GtkBox", "the chooser is parented before popup()");
+  assert.equal(report.emojiOpened, true);
+  assert.equal(report.emojiVisible, true);
+  assert.equal(report.emojiHidden, true);
+  assert.equal(report.scaleOpened, true);
+  assert.equal(report.scaleVisible, true);
+  assert.equal(report.scaleHidden, true);
+  assert.ok(report.events.some(([name, value]) => name === "emoji" && value === "😀"));
+  assert.ok(report.events.some(([name, value]) => name === "value" && value === 0.75));
 });

@@ -29,9 +29,10 @@ export interface Placement {
   index: number; // among widget-backed, non-controller siblings
 }
 export interface WidgetDefinition {
-  create: () => object;
+  create: (props?: Record<string, unknown>) => object;
   children?: ChildrenMode;
   controller?: boolean;
+  constructProps?: string[]; // kebab-case names, applied by create()
   insertChild?: (placement: Placement) => void;
   removeChild?: (placement: Placement) => void;
 }
@@ -53,6 +54,156 @@ The hooks come with rules that container authors must follow:
 - Hooks must be functions; `registerWidget()` rejects any other value.
 - `hasWidget(type)` and `getWidgetDefinition(type)` are exported so wrapper libraries can register
   once, without a duplicate-registration crash.
+
+### Construct-only properties
+
+GTK has properties that may only be passed to the constructor (`GParamFlags.CONSTRUCT_ONLY`).
+Calling `setProperty()` afterwards either does nothing (`setContentType()` is a no-op) or logs
+`GLib-GObject-CRITICAL: construct property "content-type" … can't be set after construction`.
+`WidgetDefinition` therefore has a second, optional creation path:
+
+```ts
+export interface WidgetDefinition {
+  // `props` contains only the names listed in `constructProps`, keyed by their camelCase
+  // node-gtk constructor names: constructProps: ["content-type"] -> { contentType }.
+  create: (props?: Record<string, unknown>) => object;
+  /** Kebab-case property names that must go to the constructor. */
+  constructProps?: string[];
+}
+```
+
+The renderer passes the VNode props to `createElement()`, so `VioDriver.create(type, props?)`
+receives them before the widget is inserted:
+
+- A definition that declares `constructProps` gets a filtered `props` object in `create()`. The
+  filter accepts both `content-type` and `contentType` spellings in the VNode.
+- Every other definition keeps `create: () => new Gtk.X()`; the optional argument is ignored.
+- `patchProp()` still runs for the same key. When the value already matches the constructed
+  property, the driver returns without calling `setProperty()`, so GTK never logs a critical.
+- A real change after insertion throws
+  `vio: '<type>' property '<name>' is construct-only and cannot change after the widget is inserted`.
+  Before insertion (a manually built node or a renderer that creates elements before props), the
+  driver recreates the widget with the accumulated props and rebinds its native signals. This is a
+  compatibility path; Vue's normal `createElement(type, …, props)` path applies the value directly.
+- `registerWidget()` validates `constructProps` as an array of strings.
+
+Introspected `gtk-*` widgets use the same mechanism. `resolveIntrospected()` attaches a
+`constructProps` list generated from GObject Introspection, so
+`<gtk-app-chooser-button content-type="image/png" />` and `VAppChooserButton` behave identically.
+The universal `Gtk.Widget:css-name` property is construct-only for every class; the table below
+lists it plus the class-specific extras for all 105 `Gtk.Widget` subclasses on GTK 4.24.1.
+
+| Class                    | Construct-only properties                     |
+| ------------------------ | --------------------------------------------- |
+| `about-dialog`           | css-name                                      |
+| `action-bar`             | css-name                                      |
+| `app-chooser-button`     | css-name, content-type                        |
+| `app-chooser-dialog`     | css-name, content-type, use-header-bar, gfile |
+| `app-chooser-widget`     | css-name, content-type                        |
+| `application-window`     | css-name                                      |
+| `aspect-frame`           | css-name                                      |
+| `assistant`              | css-name, use-header-bar                      |
+| `box`                    | css-name                                      |
+| `button`                 | css-name                                      |
+| `calendar`               | css-name                                      |
+| `cell-view`              | css-name, cell-area, cell-area-context        |
+| `center-box`             | css-name                                      |
+| `check-button`           | css-name                                      |
+| `color-button`           | css-name                                      |
+| `color-chooser-dialog`   | css-name, use-header-bar                      |
+| `color-chooser-widget`   | css-name                                      |
+| `color-dialog-button`    | css-name                                      |
+| `column-view`            | css-name                                      |
+| `combo-box`              | css-name, has-entry                           |
+| `combo-box-text`         | css-name, has-entry                           |
+| `dialog`                 | css-name, use-header-bar                      |
+| `drag-icon`              | css-name                                      |
+| `drawing-area`           | css-name                                      |
+| `drop-down`              | css-name                                      |
+| `editable-label`         | css-name                                      |
+| `emoji-chooser`          | css-name                                      |
+| `entry`                  | css-name                                      |
+| `expander`               | css-name                                      |
+| `file-chooser-dialog`    | css-name, use-header-bar                      |
+| `file-chooser-widget`    | css-name                                      |
+| `fixed`                  | css-name                                      |
+| `flow-box`               | css-name                                      |
+| `flow-box-child`         | css-name                                      |
+| `font-button`            | css-name                                      |
+| `font-chooser-dialog`    | css-name, use-header-bar                      |
+| `font-chooser-widget`    | css-name                                      |
+| `font-dialog-button`     | css-name                                      |
+| `frame`                  | css-name                                      |
+| `gl-area`                | css-name                                      |
+| `graphics-offload`       | css-name                                      |
+| `grid`                   | css-name                                      |
+| `grid-view`              | css-name                                      |
+| `header-bar`             | css-name                                      |
+| `icon-view`              | css-name, cell-area                           |
+| `image`                  | css-name                                      |
+| `info-bar`               | css-name                                      |
+| `inscription`            | css-name                                      |
+| `label`                  | css-name                                      |
+| `level-bar`              | css-name                                      |
+| `link-button`            | css-name                                      |
+| `list-base`              | css-name                                      |
+| `list-box`               | css-name                                      |
+| `list-box-row`           | css-name                                      |
+| `list-view`              | css-name                                      |
+| `lock-button`            | css-name                                      |
+| `media-controls`         | css-name                                      |
+| `menu-button`            | css-name                                      |
+| `message-dialog`         | css-name, use-header-bar, buttons             |
+| `notebook`               | css-name                                      |
+| `overlay`                | css-name                                      |
+| `page-setup-unix-dialog` | css-name, use-header-bar                      |
+| `paned`                  | css-name                                      |
+| `password-entry`         | css-name                                      |
+| `picture`                | css-name                                      |
+| `popover`                | css-name                                      |
+| `popover-bin`            | css-name                                      |
+| `popover-menu`           | css-name                                      |
+| `popover-menu-bar`       | css-name                                      |
+| `print-unix-dialog`      | css-name, use-header-bar                      |
+| `progress-bar`           | css-name                                      |
+| `range`                  | css-name                                      |
+| `revealer`               | css-name                                      |
+| `scale`                  | css-name                                      |
+| `scale-button`           | css-name                                      |
+| `scrollbar`              | css-name                                      |
+| `scrolled-window`        | css-name                                      |
+| `search-bar`             | css-name                                      |
+| `search-entry`           | css-name                                      |
+| `separator`              | css-name                                      |
+| `shortcut-label`         | css-name                                      |
+| `shortcuts-group`        | css-name                                      |
+| `shortcuts-section`      | css-name                                      |
+| `shortcuts-shortcut`     | css-name                                      |
+| `shortcuts-window`       | css-name                                      |
+| `spin-button`            | css-name                                      |
+| `spinner`                | css-name                                      |
+| `stack`                  | css-name                                      |
+| `stack-sidebar`          | css-name                                      |
+| `stack-switcher`         | css-name                                      |
+| `statusbar`              | css-name                                      |
+| `svg-widget`             | css-name                                      |
+| `switch`                 | css-name                                      |
+| `text`                   | css-name                                      |
+| `text-view`              | css-name                                      |
+| `toggle-button`          | css-name                                      |
+| `tree-expander`          | css-name                                      |
+| `tree-view`              | css-name                                      |
+| `video`                  | css-name                                      |
+| `viewport`               | css-name                                      |
+| `volume-button`          | css-name                                      |
+| `widget`                 | css-name                                      |
+| `window`                 | css-name                                      |
+| `window-controls`        | css-name                                      |
+| `window-handle`          | css-name                                      |
+
+The table was produced with GObject Introspection (`Gtk.Widget.list_properties()` and
+`GParamFlags.CONSTRUCT_ONLY`); the probe lives outside the repository, and the generated list is
+embedded in `packages/vio/src/modules/gtk/introspected.ts` so the runtime does not need Python.
 
 ### Containers that are now declarative
 
@@ -398,15 +549,39 @@ deviation list are in [`small.md`](small.md). The non-obvious limits:
 - **`GtkFontChooserWidget` font readback is empty on 4.24.1.** `getFont()` returns `null` and
   `font`/`font-desc` stay empty even after realization. `VFontChooserWidget` applies `font`/`font-desc`
   with setters, but `v-model:font` is driven by `font-activated` (the font name string).
-- **`GtkAppChooserButton`/`Gtk.AppChooserWidget` are not wrapped.** `content-type` is
-  construct-only; the driver creates widgets with no constructor properties and patching it logs
-  `GLib-GObject-CRITICAL: construct property "content-type" … can't be set after construction`.
-  Wrapping them would need a custom creation path outside `WidgetDefinition`.
 - **Standalone scrollbar theme warning.** On this host, GTK 4.24.1 logs
   `GtkGizmo … (slider) reported min height -2` for a `Gtk.Scrollbar` that is not inside a scrolled
   window, regardless of vio. The `demo:small` window adds a non-scoped CSS rule
   `scrollbar slider { min-width: 8px; min-height: 8px; }`. The wrapper does not install global CSS,
   and the test mounts scrollbars without a window, so the suite stays warning-free.
+
+## Wave 6: construct-only properties and AppChooser
+
+`packages/vio/src/modules/gtk/app-chooser.ts` adds `VAppChooserButton` and `VAppChooserWidget`.
+Both rely on the `constructProps` hook described under [Construct-only properties](#construct-only-properties).
+
+- **`Gtk.AppChooserButton` and `Gtk.AppChooserWidget` are now wrapped.** `content-type` is passed to
+  the constructor; `VAppChooserButton` maps `heading`, `modal`, `show-dialog-item` and
+  `show-default-item`, and exposes `appendSeparator()`, `appendCustomItem()` and `activate()` on the
+  handle. `VAppChooserWidget` maps `show-default`, `show-fallback`, `show-other`,
+  `show-recommended` and `show-all`. The generic `<gtk-app-chooser-button content-type="…" />` and
+  `<gtk-app-chooser-widget content-type="…" />` use the same constructor path.
+- **Invalid content types are an empty state.** `VAppChooserButton`/`VAppChooserWidget` validate the
+  value with `Gio.contentTypeFromMimeType()` and an RFC 6838 shape check. A missing or invalid value
+  (`"nonsense"`, an empty string, a value that normalizes to `null`) creates the native widget without
+  `content-type`, exposes `handle.error` and `handle.available === false`, and never calls
+  `setProperty("content-type", …)` after construction.
+- **`GtkAppChooserWidget::populate-popup` does not exist on GTK 4.24.** The GIR for GTK 4.24 has
+  only `application-selected` and `application-activated`; connecting `populate-popup` fails with
+  `Signal name is invalid`. The component therefore forwards the two existing signals and documents
+  the missing one instead of silently accepting a dead listener. Use `.widget` if a future GTK
+  version adds the signal.
+- **Real popups are tested in a window.** `VEmojiChooser.popup()` and the `VScaleButton` handle's
+  `popup()`/`popdown()` open the native popovers. On this host, GTK 4.24.1 also logs
+  `Gdk-WARNING: gdk_frame_timings_submitted() called on submitted frame` after a popover opens; it
+  is a GDK frame-clock warning, not a vio error. The test asserts that this is the only remaining
+  warning line. The Gizmo slider warning is avoided in the test and demo with the style rule
+  `slider { min-width: 16px; min-height: 16px; }`; the library does not install global CSS.
 
 ## Imperative escape hatch
 

@@ -18,9 +18,20 @@ export interface Placement {
 }
 
 export interface WidgetDefinition {
-  create: () => object;
+  /**
+   * Build the native object. `props` contains the construct-only properties declared by
+   * `constructProps`, keyed by their camelCase node-gtk constructor names. Definitions that need
+   * no constructor properties keep using `create: () => new Gtk.X()`.
+   */
+  create: (props?: Record<string, unknown>) => object;
   children?: ChildrenMode;
   controller?: boolean;
+  /**
+   * Kebab-case property names that GTK accepts only in the constructor (`GParamFlags.CONSTRUCT_ONLY`).
+   * They are passed to `create()` at element creation; later changes are rejected instead of
+   * reaching `setProperty()` and logging `GLib-GObject-CRITICAL`.
+   */
+  constructProps?: string[];
   /** Container-specific placement; runs before the `children` switch. */
   insertChild?: (placement: Placement) => void;
   /** Container-specific removal; must be safe to call more than once. */

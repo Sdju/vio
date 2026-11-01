@@ -57,9 +57,35 @@ const toKebab = (name: string) =>
     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
     .toLowerCase();
 
+/**
+ * Construct-only properties beyond the universal `Gtk.Widget:css-name`. Generated from
+ * GObject Introspection (`GParamFlags.CONSTRUCT_ONLY`) for every Gtk.Widget subclass on GTK 4.24;
+ * the full class → property table is in `docs/limitations.md`.
+ */
+const extraConstructProps: Record<string, string[]> = {
+  "app-chooser-button": ["content-type"],
+  "app-chooser-dialog": ["content-type", "gfile", "use-header-bar"],
+  "app-chooser-widget": ["content-type"],
+  assistant: ["use-header-bar"],
+  "cell-view": ["cell-area", "cell-area-context"],
+  "combo-box": ["has-entry"],
+  "combo-box-text": ["has-entry"],
+  dialog: ["use-header-bar"],
+  "icon-view": ["cell-area"],
+  "message-dialog": ["buttons", "use-header-bar"],
+};
+
+const baseConstructProps = ["css-name"];
+const constructPropsOf = (type: string): string[] => [
+  ...baseConstructProps,
+  ...(extraConstructProps[type] ?? []),
+];
+
 const definitionOf = (type: string): WidgetDefinition => ({
-  create: () => new (widgetClasses().get(type) as new () => object)(),
+  create: (props) =>
+    new (widgetClasses().get(type) as new (props?: Record<string, unknown>) => object)(props),
   children: singleChildTypes.has(type) ? "single" : "none",
+  constructProps: constructPropsOf(type),
 });
 
 const definitions = new Map<string, WidgetDefinition | undefined>();

@@ -5,6 +5,7 @@ export * from "./data.ts";
 export * from "./dialogs.ts";
 export * from "./media.ts";
 export * from "./small.ts";
+export * from "./app-chooser.ts";
 export * from "./types.ts";
 export {
   resolveIntrospected,

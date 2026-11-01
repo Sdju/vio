@@ -11,32 +11,36 @@ vp run --filter @zede/vio demo:small   # frames, ranges, popovers, SVG and title
 
 ## Components
 
-| Component             | GTK widget               | `v-model`                               | Slots                    | Limitations                                                                     |
-| --------------------- | ------------------------ | --------------------------------------- | ------------------------ | ------------------------------------------------------------------------------- |
-| `VFrame`              | `Gtk.Frame`              | none                                    | default, `#label-widget` | one content child; the header slot is a role, not a second content child        |
-| `VViewport`           | `Gtk.Viewport`           | none                                    | default                  | one child; no `scroll-to` signal on GTK 4.24, use the `scrollTo()` method       |
-| `VRevealer`           | `Gtk.Revealer`           | `v-model:revealed` (`boolean`)          | default                  | `revealed-changed` is synthesized from `notify::reveal-child`                   |
-| `VAspectFrame`        | `Gtk.AspectFrame`        | none                                    | default (box semantics)  | content is placed in an internal vertical `Gtk.Box`; `shrink-child` is emulated |
-| `VScrollbar`          | `Gtk.Scrollbar`          | `v-model:value` (`number`)              | none                     | value lives on the internal `GtkAdjustment`, not on `Gtk.Scrollbar`             |
-| `VScaleButton`        | `Gtk.ScaleButton`        | `v-model:value` (`number`)              | none                     | value/range come from a `GtkAdjustment`                                         |
-| `VVolumeButton`       | `Gtk.VolumeButton`       | `v-model:value` (`number`)              | none                     | keeps GTK's default volume icons unless `icons` is set                          |
-| `VLockButton`         | `Gtk.LockButton`         | `v-model:permission` (`Gio.Permission`) | none                     | a `null` permission is a valid empty state                                      |
-| `VPopoverBin`         | `Gtk.PopoverBin`         | none                                    | default, `#popover`      | `#popover` must contain a `Gtk.Popover`                                         |
-| `VEmojiChooser`       | `Gtk.EmojiChooser`       | none                                    | none                     | a popover: it must be parented (for example by `VMenuButton`)                   |
-| `VShortcutLabel`      | `Gtk.ShortcutLabel`      | none                                    | none                     | `accelerator` is an accelerator string such as `<Control>s`                     |
-| `VTreeExpander`       | `Gtk.TreeExpander`       | none                                    | default                  | GTK 4.24 renamed `indent-for-expander` to `indent-for-depth`                    |
-| `VSvgWidget`          | `Gtk.SvgWidget`          | none                                    | none                     | GTK 4.24 exposes `resource`/`bytes`, not `file`/`paintable`                     |
-| `VWindowControls`     | `Gtk.WindowControls`     | none                                    | none                     | GTK 4.24 removed `decorative`; `false` hides the controls                       |
-| `VWindowHandle`       | `Gtk.WindowHandle`       | none                                    | default                  | one child                                                                       |
-| `VColorChooserWidget` | `Gtk.ColorChooserWidget` | `v-model:rgba` (`Gdk.RGBA`)             | none                     | emits on `color-activated`, not on every `notify::rgba`                         |
-| `VFontChooserWidget`  | `Gtk.FontChooserWidget`  | `v-model:font` (`string`)               | none                     | GTK 4.24's font getter stays empty; the model is event-driven                   |
-| `VGraphicsOffload`    | `Gtk.GraphicsOffload`    | none                                    | default                  | `enabled` accepts `"enabled"`, `"disabled"`, `true`, `false` or the enum        |
+| Component             | GTK widget               | `v-model`                               | Slots                    | Limitations                                                                      |
+| --------------------- | ------------------------ | --------------------------------------- | ------------------------ | -------------------------------------------------------------------------------- |
+| `VFrame`              | `Gtk.Frame`              | none                                    | default, `#label-widget` | one content child; the header slot is a role, not a second content child         |
+| `VViewport`           | `Gtk.Viewport`           | none                                    | default                  | one child; no `scroll-to` signal on GTK 4.24, use the `scrollTo()` method        |
+| `VRevealer`           | `Gtk.Revealer`           | `v-model:revealed` (`boolean`)          | default                  | `revealed-changed` is synthesized from `notify::reveal-child`                    |
+| `VAspectFrame`        | `Gtk.AspectFrame`        | none                                    | default (box semantics)  | content is placed in an internal vertical `Gtk.Box`; `shrink-child` is emulated  |
+| `VScrollbar`          | `Gtk.Scrollbar`          | `v-model:value` (`number`)              | none                     | value lives on the internal `GtkAdjustment`, not on `Gtk.Scrollbar`              |
+| `VScaleButton`        | `Gtk.ScaleButton`        | `v-model:value` (`number`)              | none                     | value/range come from a `GtkAdjustment`                                          |
+| `VVolumeButton`       | `Gtk.VolumeButton`       | `v-model:value` (`number`)              | none                     | keeps GTK's default volume icons unless `icons` is set                           |
+| `VLockButton`         | `Gtk.LockButton`         | `v-model:permission` (`Gio.Permission`) | none                     | a `null` permission is a valid empty state                                       |
+| `VPopoverBin`         | `Gtk.PopoverBin`         | none                                    | default, `#popover`      | `#popover` must contain a `Gtk.Popover`                                          |
+| `VEmojiChooser`       | `Gtk.EmojiChooser`       | none                                    | none                     | a popover: it must be parented (for example by `VMenuButton`)                    |
+| `VShortcutLabel`      | `Gtk.ShortcutLabel`      | none                                    | none                     | `accelerator` is an accelerator string such as `<Control>s`                      |
+| `VTreeExpander`       | `Gtk.TreeExpander`       | none                                    | default                  | GTK 4.24 renamed `indent-for-expander` to `indent-for-depth`                     |
+| `VSvgWidget`          | `Gtk.SvgWidget`          | none                                    | none                     | GTK 4.24 exposes `resource`/`bytes`, not `file`/`paintable`                      |
+| `VWindowControls`     | `Gtk.WindowControls`     | none                                    | none                     | GTK 4.24 removed `decorative`; `false` hides the controls                        |
+| `VWindowHandle`       | `Gtk.WindowHandle`       | none                                    | default                  | one child                                                                        |
+| `VColorChooserWidget` | `Gtk.ColorChooserWidget` | `v-model:rgba` (`Gdk.RGBA`)             | none                     | emits on `color-activated`, not on every `notify::rgba`                          |
+| `VFontChooserWidget`  | `Gtk.FontChooserWidget`  | `v-model:font` (`string`)               | none                     | GTK 4.24's font getter stays empty; the model is event-driven                    |
+| `VGraphicsOffload`    | `Gtk.GraphicsOffload`    | none                                    | default                  | `enabled` accepts `"enabled"`, `"disabled"`, `true`, `false` or the enum         |
+| `VAppChooserButton`   | `Gtk.AppChooserButton`   | none                                    | none                     | `content-type` is required and construct-only; invalid values are an empty state |
+| `VAppChooserWidget`   | `Gtk.AppChooserWidget`   | none                                    | none                     | `content-type` is required and construct-only; no `populate-popup` on GTK 4.24   |
 
 `VColorChooserWidget`, `VFontChooserWidget` and `VGraphicsOffload` are the wave 5 spare widgets.
-`VAppChooserButton`/`VAppChooserWidget` are **not** wrapped: their `content-type` property is
-construct-only, and the driver creates widgets without constructor properties. Setting it after
-construction logs a `GLib-GObject-CRITICAL`, so a wrapper would need a custom creation path.
-`Gtk.ShortcutsWindow` remains intentionally unwrapped (see [`widgets.md`](widgets.md)).
+Wave 6 adds `VAppChooserButton` and `VAppChooserWidget` in
+`packages/vio/src/modules/gtk/app-chooser.ts`: their construct-only `content-type` is passed through
+the `WidgetDefinition.constructProps` hook, so no `GLib-GObject-CRITICAL` is logged. The same hook
+also makes `<gtk-app-chooser-button content-type="…" />` and
+`<gtk-app-chooser-widget content-type="…" />` work. `Gtk.ShortcutsWindow` remains intentionally
+unwrapped (see [`widgets.md`](widgets.md)).
 
 ## Frames and viewports
 
@@ -198,6 +202,39 @@ construction logs a `GLib-GObject-CRITICAL`, so a wrapper would need a custom cr
   a readback.
 - `VGraphicsOffload` maps `enabled` and `black-background`; the enum is `Gtk.GraphicsOffloadEnabled`.
 
+## AppChooser (wave 6)
+
+```vue
+<VAppChooserButton
+  content-type="image/png"
+  heading="Open with"
+  :modal="true"
+  :show-dialog-item="true"
+  @custom-item-activated="(name) => (picked = name)"
+  @activate="activated = true"
+/>
+
+<VAppChooserWidget
+  content-type="image/png"
+  :show-default="true"
+  :show-recommended="true"
+  @application-selected="(app) => (selected = app.getName())"
+/>
+```
+
+- `content-type` is required and construct-only. It reaches `new Gtk.AppChooserButton({ contentType })`
+  through `WidgetDefinition.constructProps`; changing it after mount throws a clear
+  `construct-only` error instead of logging `GLib-GObject-CRITICAL`.
+- `VAppChooserButton` maps `heading`, `modal`, `show-dialog-item` and `show-default-item`. The handle
+  exposes `appendSeparator()`, `appendCustomItem(name, label, icon)` (a `Gio.Icon`) and `activate()`.
+- `VAppChooserWidget` maps `show-default`, `show-fallback`, `show-other`, `show-recommended` and
+  `show-all`; `application-selected`/`application-activated` receive a `Gio.AppInfo`.
+- A missing or invalid `content-type` (`Gio.contentTypeFromMimeType()` returns `null`, or the value
+  is not MIME-shaped) creates an empty widget, sets `handle.error` and `handle.available === false`.
+- GTK 4.24 has no `GtkAppChooserWidget::populate-popup` signal; use `application-selected` and
+  `application-activated`. The generic `gtk-app-chooser-button`/`gtk-app-chooser-widget` elements
+  accept the same `content-type` prop.
+
 ## Deviations from the wave 5 brief
 
 | Brief                                         | GTK 4.24 reality                              | Wrapper behavior                                       |
@@ -209,7 +246,8 @@ construction logs a `GLib-GObject-CRITICAL`, so a wrapper would need a custom cr
 | `GtkTreeExpander` `indent-for-expander`       | renamed to `indent-for-depth`                 | both props accepted; only the native name is written   |
 | `GtkSvgWidget` `file`/`paintable`             | `resource`/`state`/`stylesheet`/`svg` on 4.24 | `filename`/`file`/`bytes` load through `loadFromBytes` |
 | `GtkWindowControls` `decorative`              | removed in 4.24                               | `decorative=false` hides the widget                    |
-| `GtkAppChooserButton`/`Widget` `content-type` | construct-only                                | spare not wrapped; documented above                    |
+| `GtkAppChooserButton`/`Widget` `content-type` | construct-only                                | passed through `constructProps`; late changes throw    |
+| `GtkAppChooserWidget` `populate-popup`        | no such signal on GTK 4.24                    | only the two application signals are forwarded         |
 
 Every deviation is covered by a test that asserts the native surface, not only the wrapper:
 `tests/small.test.mjs` checks the missing viewport/scrollbar signals, the renamed tree-expander
@@ -217,7 +255,7 @@ property, the absence of `paintable`/`file` on `GtkSvgWidget`, and the `indent-f
 
 ## Tests and demo
 
-`packages/vio/tests/small.test.mjs` contains 20 tests:
+`packages/vio/tests/small.test.mjs` contains 21 tests:
 
 - mount, prop update and unmount for every wave 5 component;
 - `v-model:revealed`, `v-model:value`, `v-model:permission`, `v-model:rgba`, `v-model:font`;
@@ -226,7 +264,14 @@ property, the absence of `paintable`/`file` on `GtkSvgWidget`, and the `indent-f
 - missing-file and unparented-popup empty states;
 - a child-process mount of all wave 5 components that asserts zero
   `Gtk-WARNING`/`Gtk-CRITICAL`/`GLib-CRITICAL`/`Gdk-CRITICAL` lines;
-- a window-hosted scale-button test in a child process so no nested main loop is created.
+- a window-hosted scale-button test in a child process so no nested main loop is created;
+- a real `VEmojiChooser`/`VScaleButton` popup test in a shown window, asserting
+  `getVisible()`, `getParent()`, `emoji-picked`, `value-changed` and `popdown`.
+
+`packages/vio/tests/app-chooser.test.mjs` adds 7 tests for the explicit and introspected
+constructor path, invalid content types and both AppChooser components.
 
 The demo lives in `packages/vio/examples/small` and is registered as `demo:small`. Its non-scoped
-CSS adds a slider min-size rule for the standalone `Gtk.Scrollbar` theme warning described above.
+CSS adds slider min-size rules for the standalone `Gtk.Scrollbar` and popover scale theme warnings
+described above. It also shows an AppChooser scene and buttons that open real emoji/scale popups;
+nothing pops up automatically, so `demo:small` stays warning-free under `timeout`.

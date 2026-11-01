@@ -17,6 +17,8 @@ export interface VioNode {
   events: Map<string, SignalBinding>;
   /** Explicit child mode for a root node: a `ChildrenMode` or a registered widget type. */
   mode?: string | null;
+  /** Props present when the element was created; construct-only props were applied then. */
+  constructed?: Map<string, unknown>;
 }
 export interface VioElement extends VioNode {
   kind: "root" | "element";
@@ -24,6 +26,8 @@ export interface VioElement extends VioNode {
 interface SignalBinding {
   value: Function | Function[];
   instance: ComponentInternalInstance | null;
+  signal: string;
+  callback: (...args: unknown[]) => unknown;
   disconnect: () => void;
   once: boolean;
   fired: boolean;
@@ -36,7 +40,7 @@ export interface VioDriver {
   beginMount?(): void;
   /** Called after the mount subtree is complete. */
   endMount?(): void;
-  create(type: string): object;
+  create(type: string, props?: Record<string, unknown>): object;
   createText(text: string): object;
   insert(node: VioNode, parent: VioElement, before: object | null): void;
   remove(node: VioNode, parent: VioElement): void;
@@ -148,12 +152,14 @@ export function createVioRenderer(driver: VioDriver) {
     return makeNode("text", "label", text ? driver.createText(text) : null, text);
   }
   const renderer = createRenderer<VioNode, VioElement>({
-    createElement(type) {
-      return makeNode(
+    createElement(type, _namespace, _customizedBuiltIn, props) {
+      const node = makeNode(
         "element",
         type.replace(/^gtk-/, ""),
-        driver.create(type.replace(/^gtk-/, "")),
+        driver.create(type.replace(/^gtk-/, ""), props ?? undefined),
       ) as VioElement;
+      if (props) node.constructed = new Map(Object.entries(props));
+      return node;
     },
     createText,
     createComment: (text) => makeNode("comment", "comment", null, text),
@@ -205,19 +211,21 @@ export function createVioRenderer(driver: VioDriver) {
         const binding: SignalBinding = {
           value,
           instance: instance ?? null,
+          signal,
+          callback: (...args) => {
+            if (node.patching || (binding.once && binding.fired)) return undefined;
+            binding.fired = true;
+            // Vue errorHandler/lifecycle context still applies to native signals.
+            const result = callWithAsyncErrorHandling(binding.value, binding.instance, 5, args);
+            if (Array.isArray(result))
+              return result.some((value) => value === true) ? true : result.at(-1);
+            return result;
+          },
           once,
           fired: false,
           disconnect: () => {},
         };
-        binding.disconnect = driver.connect(node, signal, (...args) => {
-          if (node.patching || (binding.once && binding.fired)) return undefined;
-          binding.fired = true;
-          // Vue errorHandler/lifecycle context still applies to native signals.
-          const result = callWithAsyncErrorHandling(binding.value, binding.instance, 5, args);
-          if (Array.isArray(result))
-            return result.some((value) => value === true) ? true : result.at(-1);
-          return result;
-        });
+        binding.disconnect = driver.connect(node, signal, binding.callback);
         node.events.set(key, binding);
       } else {
         node.patching++;

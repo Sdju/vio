@@ -2,6 +2,8 @@
 import Gio from "gi:Gio-2.0";
 import GLib from "gi:GLib-2.0";
 import {
+  VAppChooserButton,
+  VAppChooserWidget,
   VBox,
   VAspectFrame,
   VButton,
@@ -39,6 +41,11 @@ const scale = ref(0.4);
 const volume = ref(0.6);
 const permission = shallowRef<Gio.Permission>(Gio.SimplePermission.new(true));
 const emoji = ref("—");
+const customItem = ref("—");
+const selectedApp = ref("—");
+const appChooser = shallowRef();
+const emojiChooser = shallowRef();
+const scaleButton = shallowRef();
 const permissionLabel = computed(() =>
   permission.value?.getAllowed?.() === false ? "locked" : "unlocked",
 );
@@ -195,6 +202,53 @@ function close() {
         </VBox>
       </VFrame>
 
+      <VFrame label="AppChooser (construct-only content-type)">
+        <VBox :spacing="8">
+          <VBox orientation="horizontal" :spacing="12">
+            <VAppChooserButton
+              ref="appChooser"
+              content-type="image/png"
+              heading="Open with"
+              :modal="true"
+              :show-dialog-item="true"
+              @custom-item-activated="customItem = $event"
+            />
+            <VButton @clicked="appChooser?.appendSeparator()">Append separator</VButton>
+            <VButton
+              @clicked="
+                appChooser?.appendCustomItem(
+                  'vio-custom',
+                  'Vio demo',
+                  Gio.ThemedIcon.new('application-x-executable'),
+                )
+              "
+            >
+              Append custom item
+            </VButton>
+            <VLabel class="value">custom item {{ customItem }}</VLabel>
+          </VBox>
+          <VAppChooserWidget
+            content-type="image/png"
+            :show-default="true"
+            :show-recommended="true"
+            @application-selected="selectedApp = $event.getName()"
+          />
+          <VLabel class="value">selected application {{ selectedApp }}</VLabel>
+        </VBox>
+      </VFrame>
+
+      <VFrame label="Real popups">
+        <VBox orientation="horizontal" :spacing="12">
+          <VEmojiChooser ref="emojiChooser" @emoji-picked="emoji = $event" />
+          <VButton @clicked="emojiChooser?.popup()">Open emoji chooser</VButton>
+          <VButton @clicked="emojiChooser?.popdown()">Close emoji chooser</VButton>
+          <VScaleButton ref="scaleButton" v-model:value="scale" />
+          <VButton @clicked="scaleButton?.popup()">Open scale popup</VButton>
+          <VButton @clicked="scaleButton?.popdown()">Close scale popup</VButton>
+          <VLabel class="value">scale {{ scale.toFixed(2) }}</VLabel>
+        </VBox>
+      </VFrame>
+
       <VBox orientation="horizontal" :spacing="14">
         <VFrame label="VTreeExpander" :hexpand="true">
           <VTreeExpander :indent-for-icon="true" :indent-for-depth="true">
@@ -254,5 +308,11 @@ function close() {
 scrollbar slider {
   min-width: 8px;
   min-height: 8px;
+}
+
+/* Popover scales report a negative minimum slider size on this GTK 4.24.1 theme. */
+slider {
+  min-width: 16px;
+  min-height: 16px;
 }
 </style>

@@ -561,6 +561,24 @@ export const VScaleButton = defineComponent({
       get icons() {
         return button()?.icons ?? [];
       },
+      get popover() {
+        return button()?.getPopup() ?? null;
+      },
+      get popoverVisible() {
+        return (
+          (button()?.getPopup() as InstanceType<typeof Gtk.Popover> | null)?.getVisible() ?? false
+        );
+      },
+      /** GTK has no `GtkScaleButton.popup()` method; the internal popover owns it. */
+      popup() {
+        const widget = button();
+        if (!widget || !widget.getParent()) return false;
+        (widget.getPopup() as InstanceType<typeof Gtk.Popover> | null)?.popup();
+        return true;
+      },
+      popdown() {
+        (button()?.getPopup() as InstanceType<typeof Gtk.Popover> | null)?.popdown();
+      },
     });
     return () => {
       const { attrs: rest } = withHandler(attrs, "onValueChanged", changed);

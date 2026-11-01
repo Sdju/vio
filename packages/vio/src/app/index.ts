@@ -78,6 +78,8 @@ export {
   VColorChooserDialog,
   VFontChooserDialog,
   VAppChooserDialog,
+  VAppChooserButton,
+  VAppChooserWidget,
   VPrintUnixDialog,
   VPageSetupUnixDialog,
   VAboutDialog,
@@ -173,6 +175,7 @@ export {
   type VioDriver,
 } from "../modules/renderer/index.ts";
 export {
+  gtkDriver,
   registerWidget,
   hasWidget,
   getWidgetDefinition,
