@@ -15,6 +15,8 @@ export interface VioNode {
   text: string;
   patching: number;
   events: Map<string, SignalBinding>;
+  /** Explicit child mode for a root node: a `ChildrenMode` or a registered widget type. */
+  mode?: string | null;
 }
 export interface VioElement extends VioNode {
   kind: "root" | "element";
@@ -54,8 +56,11 @@ const makeNode = (kind: VioNode["kind"], type: string, widget: object | null, te
     patching: 0,
     events: new Map(),
   });
-export const createRoot = (widget: object | null = null): VioElement =>
-  makeNode("root", "root", widget) as VioElement;
+export const createRoot = (widget: object | null = null, mode?: string): VioElement => {
+  const node = makeNode("root", "root", widget) as VioElement;
+  if (mode !== undefined) node.mode = mode;
+  return node;
+};
 export const toKebab = (value: string) =>
   value.replace(/[A-Z]/g, (letter, index) => `${index ? "-" : ""}${letter.toLowerCase()}`);
 

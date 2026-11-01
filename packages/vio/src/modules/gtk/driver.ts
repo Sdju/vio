@@ -6,13 +6,55 @@ import { toKebab, type VioDriver, type VioElement, type VioNode } from "../rende
 import type { NativeObject, Widget } from "../renderer/index.ts";
 
 export type ChildrenMode = "none" | "box" | "single" | "list" | "grid" | "stack" | "text";
+const childrenModes = new Set<string>(["none", "box", "single", "list", "grid", "stack", "text"]);
+/** Everything a placement hook needs; `role` comes from `node.props.role`. */
+export interface Placement {
+  parent: VioElement;
+  parentWidget: InstanceType<typeof Gtk.Widget>;
+  child: InstanceType<typeof Gtk.Widget>;
+  node: VioNode;
+  /** `node.props.role`, or `null` when the child has no role marker. */
+  role: string | null;
+  /** Next sibling widget, unless the child has a role; role slots ignore anchors. */
+  before: InstanceType<typeof Gtk.Widget> | null;
+  /** Index among widget-backed, non-controller children of `parent`. */
+  index: number;
+}
 export interface WidgetDefinition {
   create: () => object;
   children?: ChildrenMode;
   controller?: boolean;
+  /** Container-specific placement; runs before the `children` switch. */
+  insertChild?: (placement: Placement) => void;
+  /** Container-specific removal; must be safe to call more than once. */
+  removeChild?: (placement: Placement) => void;
 }
 const definitions = new Map<string, WidgetDefinition>([
-  ["window", { create: () => new Gtk.Window(), children: "single" }],
+  [
+    "window",
+    {
+      create: () => new Gtk.Window(),
+      children: "single",
+      insertChild({ parent, parentWidget, child, role }) {
+        if (role === "titlebar") {
+          (parentWidget as InstanceType<typeof Gtk.Window>).setTitlebar(child);
+          return;
+        }
+        const content = concreteChildren(parent).filter((node) => node.props.role !== "titlebar");
+        if (content.length > 1)
+          throw new Error(`vio: 'window' accepts one widget child; wrap siblings in VBox`);
+        (parentWidget as InstanceType<typeof Gtk.Window>).setChild(child);
+      },
+      removeChild({ parentWidget, child, role }) {
+        const window = parentWidget as InstanceType<typeof Gtk.Window>;
+        if (role === "titlebar") {
+          if (window.getTitlebar() === child) window.setTitlebar(null);
+          return;
+        }
+        if (window.getChild() === child) window.setChild(null);
+      },
+    },
+  ],
   ["box", { create: () => new Gtk.Box(), children: "box" }],
   ["label", { create: () => new Gtk.Label(), children: "text" }],
   ["entry", { create: () => new Gtk.Entry() }],
@@ -33,7 +75,22 @@ const definitions = new Map<string, WidgetDefinition>([
 /** Extend vio with an introspected GTK/Adwaita class without changing its reconciler. */
 export function registerWidget(type: string, definition: WidgetDefinition) {
   if (definitions.has(type)) throw new Error(`vio: widget '${type}' is already registered`);
+  if (definition.children !== undefined && !childrenModes.has(definition.children))
+    throw new Error(`vio: unknown children mode '${definition.children}' for '${type}'`);
+  for (const hook of ["insertChild", "removeChild"] as const)
+    if (definition[hook] !== undefined && typeof definition[hook] !== "function")
+      throw new Error(`vio: '${type}' ${hook} must be a function`);
   definitions.set(type, definition);
+}
+
+/** True when `registerWidget()` already defined `type`. */
+export function hasWidget(type: string): boolean {
+  return definitions.has(type);
+}
+
+/** The stored definition, or `undefined`; useful for idempotent wrapper libraries. */
+export function getWidgetDefinition(type: string): WidgetDefinition | undefined {
+  return definitions.get(type);
 }
 
 export function installCss(css: string): () => void {
@@ -81,13 +138,42 @@ const stateOf = (node: VioNode) => {
   }
   return state;
 };
+const rootTypes: Array<[Function, string]> = [
+  [Gtk.Box, "box"],
+  [Gtk.ListBox, "list-box"],
+  [Gtk.Grid, "grid"],
+  [Gtk.Stack, "stack"],
+  [Gtk.Notebook, "vio-notebook"],
+  [Gtk.Paned, "vio-paned"],
+  [Gtk.Overlay, "vio-overlay"],
+  [Gtk.CenterBox, "vio-center-box"],
+  [Gtk.HeaderBar, "vio-header-bar"],
+  [Gtk.FlowBox, "vio-flow-box"],
+  [Gtk.Fixed, "vio-fixed"],
+];
+const definitionOf = (node: VioElement): WidgetDefinition | undefined => {
+  if (node.kind !== "root") return definitions.get(node.type);
+  if (node.mode) {
+    const named = definitions.get(node.mode);
+    if (named) return named;
+  }
+  if (!node.widget) return undefined;
+  for (const [type, name] of rootTypes)
+    if (node.widget instanceof (type as new (...args: unknown[]) => object))
+      return definitions.get(name);
+  return undefined;
+};
 const childMode = (node: VioElement): ChildrenMode => {
   if (node.kind !== "root") return definitions.get(node.type)?.children ?? "none";
-  if (!node.widget) return "none";
-  if (node.widget instanceof Gtk.Box) return "box";
-  if (node.widget instanceof Gtk.ListBox) return "list";
-  if (node.widget instanceof Gtk.Grid) return "grid";
-  return "single";
+  if (node.mode) {
+    const definition = definitions.get(node.mode);
+    if (definition) return definition.children ?? "none";
+    if (childrenModes.has(node.mode)) return node.mode as ChildrenMode;
+    throw new Error(`vio: unknown root child mode '${node.mode}'`);
+  }
+  const definition = definitionOf(node);
+  if (definition) return definition.children ?? "none";
+  return node.widget ? "single" : "none";
 };
 const concreteChildren = (node: VioElement) =>
   node.children.filter((child) => child.widget && !definitions.get(child.type)?.controller);
@@ -148,6 +234,16 @@ const enumValues: Record<string, Record<string, number>> = {
     external: Gtk.PolicyType.EXTERNAL,
   },
 };
+/** node-gtk rejects `setProperty(name, null)` for object properties; use their setters. */
+const nullSetters: Record<string, string> = {
+  model: "setModel",
+  factory: "setFactory",
+  file: "setFile",
+  "menu-model": "setMenuModel",
+  application: "setApplication",
+  settings: "setSettings",
+};
+const metadataProps = new Set(["role", "tab-label", "page"]);
 
 export const gtkDriver: VioDriver = {
   isAnchor: (node) => !isController(node),
@@ -170,6 +266,20 @@ export const gtkDriver: VioDriver = {
         throw new Error("vio: controller parent is not a Gtk.Widget");
       const controller = node.widget as InstanceType<typeof Gtk.EventController>;
       if (controller.getWidget() !== parent.widget) parent.widget.addController(controller);
+      return;
+    }
+    const role = typeof node.props.role === "string" ? node.props.role : null;
+    const definition = definitionOf(parent);
+    if (definition?.insertChild) {
+      definition.insertChild({
+        parent,
+        parentWidget: parent.widget as InstanceType<typeof Gtk.Widget>,
+        child: node.widget as InstanceType<typeof Gtk.Widget>,
+        node,
+        role,
+        before: role ? null : (before as InstanceType<typeof Gtk.Widget> | null),
+        index: concreteChildren(parent).indexOf(node),
+      });
       return;
     }
     const mode = childMode(parent);
@@ -227,6 +337,20 @@ export const gtkDriver: VioDriver = {
       );
       return;
     }
+    const role = typeof node.props.role === "string" ? node.props.role : null;
+    const definition = definitionOf(parent);
+    if (definition?.removeChild) {
+      definition.removeChild({
+        parent,
+        parentWidget: parent.widget as InstanceType<typeof Gtk.Widget>,
+        child: node.widget as InstanceType<typeof Gtk.Widget>,
+        node,
+        role,
+        before: null,
+        index: concreteChildren(parent).indexOf(node),
+      });
+      return;
+    }
     const mode = childMode(parent);
     if (mode === "text") {
       (parent.widget as InstanceType<typeof Gtk.Label>).setLabel(
@@ -277,6 +401,11 @@ export const gtkDriver: VioDriver = {
       applySelection(node);
       return;
     }
+    if (metadataProps.has(key)) return;
+    if ((key === "x" || key === "y") && node.parent && node.parent.widget instanceof Gtk.Fixed) {
+      gtkDriver.insert(node, node.parent, null);
+      return;
+    }
     if (["column", "row", "columnSpan", "rowSpan"].includes(key)) {
       if (node.parent && childMode(node.parent) === "grid")
         gtkDriver.insert(node, node.parent, null);
@@ -292,6 +421,17 @@ export const gtkDriver: VioDriver = {
     if (!state.defaults.has(property))
       state.defaults.set(property, native(node).getProperty(property));
     const next = value == null ? state.defaults.get(property) : value;
+    if (next == null) {
+      const setter = nullSetters[property];
+      if (setter) {
+        const method = (native(node) as unknown as Record<string, unknown>)[setter];
+        if (typeof method === "function") {
+          if (native(node).getProperty(property) != null)
+            (method as (value: null) => void).call(native(node), null);
+          return;
+        }
+      }
+    }
     if (native(node).getProperty(property) !== next) native(node).setProperty(property, next);
   },
   setText(node, text) {

@@ -19,5 +19,6 @@ export default {
   roots: {
     "packages/vio/src": { layers: libraryLayers },
     "packages/vio/examples/counter": {},
+    "packages/vio/examples/showcase": {},
   },
 };

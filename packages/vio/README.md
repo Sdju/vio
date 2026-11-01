@@ -66,6 +66,10 @@ node --import @zede/vio/register main.ts
 | `VEntry`, `VLabel`, `VButton`, `VImage`             | Entry, Label, Button, Image             |
 | `VListBox`, `VListBoxRow`, `VScrolledWindow`        | ListBox, ListBoxRow, ScrolledWindow     |
 | `VSeparator`, `VSpinner`, `VSwitch`, `VCheckButton` | Separator, Spinner, Switch, CheckButton |
+| `VNotebook`, `VNotebookPage`                        | Notebook, страница с tab label          |
+| `VPaned`, `VOverlay`, `VCenterBox`, `VHeaderBar`    | Paned, Overlay, CenterBox, HeaderBar    |
+| `VFlowBox`, `VFixed`                                | FlowBox, Fixed                          |
+| `VListView`, `VListModel`                           | ListView + модель/factory как ресурс    |
 | `VKeyController`                                    | EventControllerKey                      |
 
 Атрибуты соответствуют GObject properties. Принимаются camelCase и kebab-case: `:margin-top="16"`, `:hexpand="true"`, `:sensitive="!busy"`. Числа и boolean передавайте через `:`. `id` устанавливает GTK widget name. `class` поддерживает строку, массив и объект Vue; удаление binding восстанавливает исходные свойства и классы GTK.
@@ -74,6 +78,36 @@ Enum props можно передавать строками: `orientation="verti
 
 `VListBox` принимает `selected` — индекс строки; `-1` снимает выбор. Его непосредственные виджеты должны быть `VListBoxRow`. У Window, Button, Row и ScrolledWindow один widget child: несколько соседних виджетов оборачиваются в `VBox`. Event controller не занимает это место. Для детей `VGrid` доступны `row`, `column`, `row-span`, `column-span`; страницы `VStack` именуются через `name`.
 
+## Контейнеры и роли
+
+`VNotebook`, `VPaned`, `VOverlay`, `VCenterBox`, `VHeaderBar`, `VFlowBox` и `VFixed` размещают содержимое декларативно, через именованные слоты и роль `role`. Дочерние виджеты не нужно создавать вручную:
+
+```vue
+<VWindow>
+  <VHeaderBar role="titlebar">
+    <template #title><VLabel>vio</VLabel></template>
+  </VHeaderBar>
+  <VPaned>
+    <template #start>
+      <VNotebook>
+        <VNotebookPage label="One">…</VNotebookPage>
+        <VNotebookPage v-for="item in items" :key="item.id" :label="item.title">…</VNotebookPage>
+      </VNotebook>
+    </template>
+    <template #end>
+      <VOverlay>
+        <VLabel>main</VLabel>
+        <template #overlay><VLabel>overlay</VLabel></template>
+      </VOverlay>
+    </template>
+  </VPaned>
+</VWindow>
+```
+
+`VNotebookPage` принимает строковый `label` или слот `#tab-label` с произвольным виджетом заголовка. `VPaned` использует `#start`/`#end`, `VCenterBox` — `#start`/`#center`/`#end`, `VHeaderBar` — `#start`/`#end`/`#title`. `VHeaderBar role="titlebar"` должен быть прямым ребёнком `VWindow`: драйвер вызывает `setTitlebar()` и не занимает единственный content-слот окна. `VFixed` читает `x`/`y` из props ребёнка, `VFlowBox` сохраняет identity содержимого при keyed-переупорядочивании.
+
+Компоненты контейнеров и хелперы `useNative`, `useDetachedSlot`, `defineContainerComponent` экспортируются из `@zede/vio`. Полное описание: `docs/containers.md` репозитория.
+
 Также доступны raw элементы `<gtk-box>`, `<gtk-label>` и другие зарегистрированные `gtk-*` tags. Они используют тот же renderer.
 
 ## Сигналы, модель и refs
@@ -81,6 +115,23 @@ Enum props можно передавать строками: `orientation="verti
 `@clicked`, `@changed`, `@row-activated`, `@close-request`, `@notify::is-active` соответствуют GTK signals. В обработчик передаются аргументы сигнала; callback может вернуть `true`, чтобы поглотить GTK-событие. `.once` поддерживается. Renderer обновляет callback без повторного подключения и отключает сигналы при unmount; ошибки передаются в Vue `app.config.errorHandler`.
 
 `VEntry` поддерживает `v-model` через `text` / `changed`. Программное обновление свойства не вызывает обратный model-update. Для Switch и CheckButton используйте `:active` с `@notify::active` / `@toggled`.
+
+Модели, фабрики, файлы и меню — это значения свойств, а не виджеты. Передавайте их через props: `:model`, `:factory`, `:file`, `:menu-model`. Нативные GObject нельзя держать в глубоком `ref()` — node-gtk отвергает Vue Proxy; используйте `shallowRef` или `useNative()`:
+
+```ts
+import { useNative } from "@zede/vio";
+const model = useNative<Gtk.SingleSelection>();
+const factory = useNative<Gtk.SignalListItemFactory>();
+```
+
+`VListView` принимает `SelectionModel` (оберните `Gio.ListStore` в `Gtk.SingleSelection`/`Gtk.MultiSelection`/`Gtk.NoSelection`) и `Gtk.SignalListItemFactory`. `VListModel` создаёт store, selection и factory сам и рендерит `null`:
+
+```vue
+<VListModel ref="model" :items="items" :selected="0" />
+<VListView :model="model?.selection" :factory="model?.factory" :vexpand="true" />
+```
+
+Снятие binding `:model`/`:factory`/`:file`/`:menu-model` очищает свойство через dedicated setter (`setModel(null)` и т. п.); `setProperty(name, null)` для объектов node-gtk не принимает. `VListModel` синхронизирует store с массивом `items`, поэтому добавление, удаление и переупорядочивание элементов работают реактивно.
 
 Ref компонента открывает `.element` — host node и `.widget` — реальный GTK объект:
 
@@ -108,7 +159,9 @@ registerWidget("clamp", { create: () => new Adw.Clamp(), children: "single" });
 export const VClamp = defineWidgetComponent("VClamp", "clamp");
 ```
 
-`createRoot(existingGtkBox)` позволяет встроить Vue subtree в существующий GTK контейнер. `createVioRenderer(driver)` из `@zede/vio/core` отделён от GI и используется в headless-тестах; `@zede/vio/core` не импортирует GTK.
+`registerWidget()` валидирует `children` и отклоняет неизвестный режим. Для контейнеров с собственными слотами доступны хуки `insertChild`/`removeChild`; они получают `{ parent, parentWidget, child, node, role, before, index }`, где `role` — это `node.props.role`. Повторная вставка должна быть перемещением, а удаление — идемпотентным. `hasWidget(type)` и `getWidgetDefinition(type)` позволяют регистрировать тип один раз.
+
+`createRoot(existingWidget, mode?)` встраивает Vue subtree в существующий GTK контейнер. `mode` — это `ChildrenMode` или имя зарегистрированного типа: без него драйвер распознаёт `Box`, `ListBox`, `Grid`, `Stack`, `Notebook`, `Paned`, `Overlay`, `CenterBox`, `HeaderBar`, `FlowBox` и `Fixed`. `createVioRenderer(driver)` из `@zede/vio/core` отделён от GI и используется в headless-тестах; `@zede/vio/core` не импортирует GTK.
 
 ## Границы первой версии
 
@@ -122,6 +175,7 @@ export const VClamp = defineWidgetComponent("VClamp", "clamp");
 vp run build
 vp run test
 vp run --filter @zede/vio demo
+vp run --filter @zede/vio demo:showcase   # Notebook/Paned/Overlay + ListView
 vp run test:gtk   # нужен доступ к desktop display
 ```
 

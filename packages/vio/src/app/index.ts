@@ -28,6 +28,22 @@ export {
   VCheckButton,
   VKeyController,
   VEntry,
+  VNotebook,
+  VNotebookPage,
+  VPaned,
+  VOverlay,
+  VCenterBox,
+  VHeaderBar,
+  VFlowBox,
+  VFixed,
+  VListView,
+  VListModel,
+  defineContainerComponent,
+  useDetachedSlot,
+  useNative,
+  type ContainerContext,
+  type DetachedSlot,
+  type ListModelHandle,
 } from "../modules/gtk/index.ts";
 export type {
   NativeObject,
@@ -51,9 +67,12 @@ export {
 } from "../modules/renderer/index.ts";
 export {
   registerWidget,
+  hasWidget,
+  getWidgetDefinition,
   installCss,
   type WidgetDefinition,
   type ChildrenMode,
+  type Placement,
 } from "../modules/gtk/index.ts";
 
 const renderer = createVioRenderer(gtkDriver);
