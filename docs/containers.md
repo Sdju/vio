@@ -201,6 +201,7 @@ add/remove/reorder and unmount are deterministic.
 ```bash
 vp run --filter @zede/vio demo            # counter
 vp run --filter @zede/vio demo:showcase   # Notebook, Paned, ordered overlays, reorderable HeaderBar, ListView
+vp run --filter @zede/vio demo:controls   # expander, popover menu button, shared value models, stack switcher
 ```
 
 ## Running the tests

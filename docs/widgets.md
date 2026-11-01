@@ -63,19 +63,48 @@ diagnostic list of explicit registrations. Use `listIntrospectedWidgetTypes()` f
 The child mode of an introspected container is an **explicit allowlist**, not a method probe.
 Only these classes get `single` and accept one child through `setChild()`:
 
-| kebab name           | Gtk class               |
-| -------------------- | ----------------------- |
-| `frame`              | `Gtk.Frame`             |
-| `aspect-frame`       | `Gtk.AspectFrame`       |
-| `expander`           | `Gtk.Expander`          |
-| `revealer`           | `Gtk.Revealer`          |
-| `viewport`           | `Gtk.Viewport`          |
-| `search-bar`         | `Gtk.SearchBar`         |
-| `dialog`             | `Gtk.Dialog`            |
-| `message-dialog`     | `Gtk.MessageDialog`     |
-| `about-dialog`       | `Gtk.AboutDialog`       |
-| `application-window` | `Gtk.ApplicationWindow` |
-| `shortcuts-window`   | `Gtk.ShortcutsWindow`   |
+| kebab name               | Gtk class                 |
+| ------------------------ | ------------------------- |
+| `frame`                  | `Gtk.Frame`               |
+| `aspect-frame`           | `Gtk.AspectFrame`         |
+| `expander`               | `Gtk.Expander`            |
+| `revealer`               | `Gtk.Revealer`            |
+| `viewport`               | `Gtk.Viewport`            |
+| `search-bar`             | `Gtk.SearchBar`           |
+| `dialog`                 | `Gtk.Dialog`              |
+| `message-dialog`         | `Gtk.MessageDialog`       |
+| `about-dialog`           | `Gtk.AboutDialog`         |
+| `application-window`     | `Gtk.ApplicationWindow`   |
+| `shortcuts-window`       | `Gtk.ShortcutsWindow`     |
+| `toggle-button`          | `Gtk.ToggleButton`        |
+| `link-button`            | `Gtk.LinkButton`          |
+| `menu-button`            | `Gtk.MenuButton`          |
+| `popover`                | `Gtk.Popover`             |
+| `popover-menu`           | `Gtk.PopoverMenu`         |
+| `tree-expander`          | `Gtk.TreeExpander`        |
+| `window-handle`          | `Gtk.WindowHandle`        |
+| `flow-box-child`         | `Gtk.FlowBoxChild`        |
+| `graphics-offload`       | `Gtk.GraphicsOffload`     |
+| `lock-button`            | `Gtk.LockButton`          |
+| `emoji-chooser`          | `Gtk.EmojiChooser`        |
+| `assistant`              | `Gtk.Assistant`           |
+| `file-chooser-dialog`    | `Gtk.FileChooserDialog`   |
+| `color-chooser-dialog`   | `Gtk.ColorChooserDialog`  |
+| `font-chooser-dialog`    | `Gtk.FontChooserDialog`   |
+| `app-chooser-dialog`     | `Gtk.AppChooserDialog`    |
+| `print-unix-dialog`      | `Gtk.PrintUnixDialog`     |
+| `page-setup-unix-dialog` | `Gtk.PageSetupUnixDialog` |
+
+Every entry above was verified on GTK 4.24 by creating the widget and checking that
+`setChild(label)` accepts the label. Most classes parent it directly; `menu-button`, `popover`,
+`popover-menu` and `emoji-chooser` place it in GTK's internal content container, but `getChild()`
+returns it and the widget is an ancestor of the label. `Gtk.DragIcon` is **not** in the list:
+`setChild()` realizes the icon and crashes without a drag surface. `Gtk.ScaleButton` has no
+`setChild()` method at all. Neither class is inferred by method probing.
+
+`menu-button` and `expander` also have explicit registrations in `controls.ts` so `VMenuButton` can
+route `#popover` to `setPopover()` and `VExpander` can route `#label` to `setLabelWidget()`. Their
+generic `gtk-*` elements keep the same one-child behavior described here.
 
 Every other introspected class is `none`. A widget child inserted into it throws
 `vio: '<type>' cannot contain children`; it is never silently ignored. A second child in a

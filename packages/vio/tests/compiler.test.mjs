@@ -53,6 +53,18 @@ await test("scoped styles use GTK classes instead of DOM attributes and have lif
   assert.doesNotMatch(code, /\[data-v-/);
 });
 
+await test("control components accept v-model and v-model:argument", () => {
+  const code = compileSfc(
+    `<script setup lang="ts">
+    import { ref, VScale, VToggleButton } from "@zede/vio";
+    const active = ref<boolean>(false); const value = ref<number>(0.5);
+    </script><template><VToggleButton v-model:active="active"/><VScale v-model:value="value"/></template>`,
+    "controls.vue",
+  );
+  assert.match(code, /onUpdate:active/);
+  assert.match(code, /onUpdate:value/);
+});
+
 await test("unsupported DOM semantics fail with actionable diagnostics", () => {
   assert.throws(
     () => compileSfc('<template><gtk-label v-html="text"/></template>', "bad.vue"),

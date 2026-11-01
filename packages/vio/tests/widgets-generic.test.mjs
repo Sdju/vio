@@ -46,7 +46,7 @@ await test("introspected widgets list Gtk classes and resolve definitions lazily
   assert.ok(definition.create() instanceof Gtk.Calendar, "create() builds the native class");
   const frame = resolveIntrospected("frame");
   assert.equal(frame.children, "single");
-  assert.equal(resolveIntrospected("popover-menu").children, "none");
+  assert.equal(resolveIntrospected("popover-menu").children, "single");
   assert.equal(resolveIntrospected("combo-box-text").children, "none");
 });
 

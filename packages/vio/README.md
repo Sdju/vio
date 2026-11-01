@@ -71,6 +71,12 @@ node --import @zede/vio/register main.ts
 | `VFlowBox`, `VFixed`                                | FlowBox, Fixed                          |
 | `VListView`, `VListModel`                           | ListView + модель/factory как ресурс    |
 | `VKeyController`                                    | EventControllerKey                      |
+| `VToggleButton`, `VLinkButton`, `VMenuButton`       | ToggleButton, LinkButton, MenuButton    |
+| `VPopover`, `VPopoverMenu`, `VPopoverMenuBar`       | Popover, PopoverMenu, PopoverMenuBar    |
+| `VExpander`, `VProgressBar`, `VLevelBar`            | Expander, ProgressBar, LevelBar         |
+| `VScale`, `VSpinButton`, `VDropDown`                | Scale, SpinButton, DropDown             |
+| `VComboBoxText`, `VPasswordEntry`                   | ComboBoxText, PasswordEntry             |
+| `VStackSwitcher`, `VStackSidebar`                   | StackSwitcher, StackSidebar             |
 
 Атрибуты соответствуют GObject properties. Принимаются camelCase и kebab-case: `:margin-top="16"`, `:hexpand="true"`, `:sensitive="!busy"`. Числа и boolean передавайте через `:`. `id` устанавливает GTK widget name. `class` поддерживает строку, массив и объект Vue; удаление binding восстанавливает исходные свойства и классы GTK.
 
@@ -106,11 +112,11 @@ Enum props можно передавать строками: `orientation="verti
 
 `VNotebookPage` принимает строковый `label` или слот `#tab-label` с произвольным виджетом заголовка. `VPaned` использует `#start`/`#end`, `VCenterBox` — `#start`/`#center`/`#end`, `VHeaderBar` — `#start`/`#end`/`#title`. `VHeaderBar role="titlebar"` должен быть прямым ребёнком `VWindow`: драйвер вызывает `setTitlebar()` и не занимает единственный content-слот окна. `VFixed` читает `x`/`y` из props ребёнка, `VFlowBox` сохраняет identity содержимого при keyed-переупорядочивании.
 
-Компоненты контейнеров и хелперы `useNative`, `useDetachedSlot`, `defineContainerComponent` экспортируются из `@zede/vio`. Полное описание: `docs/containers.md` репозитория.
+Компоненты контейнеров и хелперы `useNative`, `useDetachedSlot`, `defineContainerComponent` экспортируются из `@zede/vio`. Полное описание: `docs/containers.md` репозитория. Контролы волны 1 (`VToggleButton`, `VExpander`, `VScale`, `VComboBoxText` и другие) и их `v-model`/слоты описаны в `docs/controls.md`.
 
 Также доступны raw элементы `<gtk-box>`, `<gtk-label>` и другие зарегистрированные `gtk-*` tags. Они используют тот же renderer.
 
-Любой другой класс Gtk резолвится из GObject Introspection без `registerWidget()`: `<gtk-calendar>`, `<gtk-frame>`, `<gtk-level-bar :value="0.65">`, `<gtk-popover-menu :menu-model="menu">`. Явные регистрации имеют приоритет; режим детей интроспектированного контейнера задаёт явная таблица (`single` только для `frame`, `aspect-frame`, `expander`, `revealer`, `viewport`, `search-bar`, `dialog`, `message-dialog`, `about-dialog`, `application-window`, `shortcuts-window`; остальные — `none`). Покрытие: `listIntrospectedWidgetTypes()` и `getWidgetTypes()`. Правила, таблица режимов и работа с `ref`: [`docs/widgets.md`](../../docs/widgets.md).
+Любой другой класс Gtk резолвится из GObject Introspection без `registerWidget()`: `<gtk-calendar>`, `<gtk-frame>`, `<gtk-level-bar :value="0.65">`, `<gtk-popover-menu :menu-model="menu">`. Явные регистрации имеют приоритет; режим детей интроспектированного контейнера задаёт явная таблица (`single` для `frame`, `aspect-frame`, `expander`, `revealer`, `viewport`, `search-bar`, диалогов, `toggle-button`, `link-button`, `menu-button`, `popover`, `popover-menu`, `tree-expander`, `window-handle`, `flow-box-child`, `graphics-offload`, `lock-button`, `emoji-chooser`, `assistant` и chooser-диалогов; остальные — `none`). Покрытие: `listIntrospectedWidgetTypes()` и `getWidgetTypes()`. Правила, таблица режимов и работа с `ref`: [`docs/widgets.md`](../../docs/widgets.md).
 
 ## Сигналы, модель и refs
 

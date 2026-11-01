@@ -19,6 +19,27 @@ const singleChildTypes = new Set([
   "about-dialog",
   "application-window",
   "shortcuts-window",
+  // Verified against GTK 4.24: each class accepts exactly one widget through `setChild()`.
+  // `Gtk.DragIcon` is intentionally absent: `setChild()` realizes the icon and crashes without a
+  // drag surface. `Gtk.ScaleButton` has no `setChild()` at all.
+  "toggle-button",
+  "link-button",
+  "menu-button",
+  "popover",
+  "popover-menu",
+  "tree-expander",
+  "window-handle",
+  "flow-box-child",
+  "graphics-offload",
+  "lock-button",
+  "emoji-chooser",
+  "assistant",
+  "file-chooser-dialog",
+  "color-chooser-dialog",
+  "font-chooser-dialog",
+  "app-chooser-dialog",
+  "print-unix-dialog",
+  "page-setup-unix-dialog",
 ]);
 
 /** `popover-menu` -> `PopoverMenu`; acronym classes are found through the kebab map instead. */

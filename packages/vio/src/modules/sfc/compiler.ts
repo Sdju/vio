@@ -9,6 +9,20 @@ import { createHash } from "node:crypto";
 import { stripTypeScriptTypes } from "node:module";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 
+/** `v-model` is only valid on components that declare the matching prop and update event. */
+const modelComponents = new Set([
+  "VEntry",
+  "VToggleButton",
+  "VExpander",
+  "VProgressBar",
+  "VLevelBar",
+  "VScale",
+  "VSpinButton",
+  "VDropDown",
+  "VComboBoxText",
+  "VPasswordEntry",
+]);
+
 /** `gtk-*` tags are native elements, not components that Vue must resolve. */
 const isCustomElement = (tag: string) => tag.startsWith("gtk-");
 
@@ -57,9 +71,9 @@ export function compileSfc(source: string, filename: string): string {
           if (prop.type !== 7) continue;
           if (["html", "text"].includes(prop.name))
             throw new Error(`vio: v-${prop.name} is a DOM directive; use VLabel interpolation`);
-          if (prop.name === "model" && node.tag !== "VEntry")
+          if (prop.name === "model" && !modelComponents.has(node.tag))
             throw new Error(
-              "vio: v-model is supported on VEntry; use GTK properties/signals for other widgets",
+              "vio: v-model is supported on VEntry and the V* control components; use GTK properties/signals for native widgets",
             );
           if (prop.name === "on" && prop.modifiers.some((modifier) => modifier.content !== "once"))
             throw new Error(

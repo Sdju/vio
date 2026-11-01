@@ -169,6 +169,23 @@ Process-level objects (`Gtk.Application`, `Gio.SimpleAction`, `Gio.Settings`) st
 
 These are real today and are not planned as renderer changes:
 
+- **Wave 1 control boundaries.** `Gtk.DragIcon` stays out of the introspected `single` allowlist:
+  `setChild()` realizes the icon and crashes without a drag surface, so it cannot be verified
+  safely. `Gtk.ScaleButton` has no `setChild()` method. Both remain `none`.
+- **`v-model` allowlist in SFC.** The compiler accepts `v-model` only for `VEntry` and the control
+  components in `docs/controls.md`. A third-party component that declares `modelValue` still needs
+  an explicit compiler allowlist entry; use GTK properties and signals until then.
+- **`VComboBoxText` items are strings.** `items: string[]` appends each string as both id and label.
+  Custom ids or non-string rows need `append(id, label)` on the exposed `.widget`.
+- **`VScale` value goes through its adjustment.** node-gtk does not expose `Gtk.Scale:value` through
+  `getProperty()` / `setProperty()`, so the component writes to `Gtk.Adjustment` instead. Read the
+  value from `scale.getValue()` or bind `v-model:value`.
+- **`VMenuButton` `#popover` creates the popover.** The slot supplies popover content only. For
+  custom `relative-to` / pointing configuration, create a `Gtk.Popover` in `setup`, keep it in
+  `useNative()`, and pass it through the `popover` prop.
+- **Stack switchers need an existing stack.** `VStackSwitcher` / `VStackSidebar` throw
+  `vio: … requires a stack prop` by design. A template ref is populated after the first mount, so
+  guard the switcher with `v-if="stack?.widget"` when the stack is a sibling component.
 - **Adding a `ChildrenMode`** from user code (see above). Use placement hooks or a wrapper.
 - **`setProperty(name, null)`** for an object property that is not in the driver's setter table.
   The table covers `model`, `factory`, `file`, `menu-model`, `application`, `settings`; other
