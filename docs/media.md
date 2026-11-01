@@ -10,22 +10,22 @@ vp run --filter @zede/vio demo:media   # picture, cairo canvas, GL area, pickers
 
 ## Components
 
-| Component            | GTK widget                   | `v-model`                        | Slots | Limitations                                                           |
-| -------------------- | ---------------------------- | -------------------------------- | ----- | --------------------------------------------------------------------- |
-| `VPicture`           | `Gtk.Picture`                | none                             | none  | local filenames only; `paintable` and `file`/`filename` are exclusive |
-| `VMediaFile`         | none (`Gtk.MediaFile`)       | `v-model:playing` (`boolean`)    | none  | missing files stay an empty state and are never given to GStreamer    |
-| `VVideo`             | `Gtk.Video`                  | none                             | none  | no decoder means an empty video; `autoplay`/`loop` still apply        |
-| `VMediaControls`     | `Gtk.MediaControls`          | `v-model:playing` (`boolean`)    | none  | `playing` is derived from the media stream, not a GTK property        |
-| `VDrawingArea`       | `Gtk.DrawingArea`            | none                             | none  | cairo draw runs only after the widget is allocated                    |
-| `VGLArea`            | `Gtk.GLArea`                 | none                             | none  | a missing GL context is reported through the handle and `@render`     |
-| `VColorButton`       | `Gtk.ColorButton`            | `v-model:rgba` (`Gdk.RGBA`)      | none  | the model value is a native `Gdk.RGBA` instance                       |
-| `VFontButton`        | `Gtk.FontButton`             | `v-model:font` (`string`)        | none  | accepts a `Pango.FontDescription` on input, emits a string            |
-| `VColorDialogButton` | `Gtk.ColorDialogButton`      | `v-model:rgba` (`Gdk.RGBA`)      | none  | `@color-set` is synthesized from `notify::rgba`                       |
-| `VFontDialogButton`  | `Gtk.FontDialogButton`       | `v-model:font` (`string`)        | none  | `@font-set` is synthesized from `notify::font-desc`                   |
-| `VCalendar`          | `Gtk.Calendar`               | `v-model:date` (`GLib.DateTime`) | none  | `month` on the handle is 1-based; the native getter stays 0-based     |
-| `VStringList`        | none (`Gtk.StringList`)      | none                             | none  | string items only; exposes `stringList`                               |
-| `VFilterListModel`   | none (`Gtk.FilterListModel`) | none                             | none  | `autoexpand` is accepted but has no effect on GTK 4.24                |
-| `VSortListModel`     | none (`Gtk.SortListModel`)   | none                             | none  | uses a JS `Gtk.Sorter` subclass instead of `Gtk.CustomSorter`         |
+| Component            | GTK widget                   | `v-model`                        | Slots | Limitations                                                            |
+| -------------------- | ---------------------------- | -------------------------------- | ----- | ---------------------------------------------------------------------- |
+| `VPicture`           | `Gtk.Picture`                | none                             | none  | local filenames only; `paintable` and `file`/`filename` are exclusive  |
+| `VMediaFile`         | none (`Gtk.MediaFile`)       | `v-model:playing` (`boolean`)    | none  | missing files and missing plugins are explicit `error` states          |
+| `VVideo`             | `Gtk.Video`                  | none                             | none  | a stream error is exposed as `error`/`@error`; `autoplay`/`loop` apply |
+| `VMediaControls`     | `Gtk.MediaControls`          | `v-model:playing` (`boolean`)    | none  | `playing` is derived from the media stream, not a GTK property         |
+| `VDrawingArea`       | `Gtk.DrawingArea`            | none                             | none  | cairo draw runs only after the widget is allocated                     |
+| `VGLArea`            | `Gtk.GLArea`                 | none                             | none  | a missing GL context is reported through the handle and `@render`      |
+| `VColorButton`       | `Gtk.ColorButton`            | `v-model:rgba` (`Gdk.RGBA`)      | none  | the model value is a native `Gdk.RGBA` instance                        |
+| `VFontButton`        | `Gtk.FontButton`             | `v-model:font` (`string`)        | none  | accepts a `Pango.FontDescription` on input, emits a string             |
+| `VColorDialogButton` | `Gtk.ColorDialogButton`      | `v-model:rgba` (`Gdk.RGBA`)      | none  | `@color-set` is synthesized from `notify::rgba`                        |
+| `VFontDialogButton`  | `Gtk.FontDialogButton`       | `v-model:font` (`string`)        | none  | `@font-set` is synthesized from `notify::font-desc`                    |
+| `VCalendar`          | `Gtk.Calendar`               | `v-model:date` (`GLib.DateTime`) | none  | `month` on the handle is 1-based; the native getter stays 0-based      |
+| `VStringList`        | none (`Gtk.StringList`)      | none                             | none  | string items only; exposes `stringList`                                |
+| `VFilterListModel`   | none (`Gtk.FilterListModel`) | none                             | none  | `autoexpand` is accepted but has no effect on GTK 4.24                 |
+| `VSortListModel`     | none (`Gtk.SortListModel`)   | none                             | none  | uses a JS `Gtk.Sorter` subclass instead of `Gtk.CustomSorter`          |
 
 `VMediaFile`, `VStringList`, `VFilterListModel` and `VSortListModel` are null-rendering resources:
 they expose native objects to a component ref and place nothing in the GTK tree.
@@ -61,14 +61,24 @@ one of `fill`, `contain`, `cover`, `scale-down`.
 - A nonexistent path is an empty state: the component sets `error`, `available = false`, and never
   calls `play()`. This matters because `GtkMediaFile` on a missing file reaches
   `gtk_gst_media_file_source_setup_cb` and logs a `Gtk-CRITICAL` (verified on 4.24.1) if played.
+- A file that exists but cannot be decoded is a **stream error**, not a missing file. The component
+  listens to `notify::error`, writes `Gtk.MediaStream.getError().message` into `error` and emits
+  `@error`; `playing` falls back to `false`. `VVideo` does the same for its bound stream. This is
+  what makes a partial GStreamer installation honest instead of looking paused forever.
 - The GTK `GtkMediaStream` interface signals `playing-changed`/`ended` cannot be connected by name
   through node-gtk 4.1.1 (`Signal name is invalid`). The components bridge the equivalent object
-  notifications `notify::playing`, `notify::ended`, `notify::duration` and `notify::timestamp`
-  instead. The public Vue events keep GTK's names: `@playing-changed`, `@ended`, `@playing`.
+  notifications `notify::playing`, `notify::ended`, `notify::duration`, `notify::timestamp` and
+  `notify::error` instead. The public Vue events keep GTK's names: `@playing-changed`, `@ended`,
+  `@playing`, `@error`.
 - `Gtk.MediaControls` has no `playing` property on GTK 4.24. `v-model:playing` reads the attached
   stream's `playing` property and writes it with `play()`/`pause()`.
-- GStreamer is not imported or initialized by the library. A machine without decoders still mounts
-  these widgets; playback stays empty and GStreamer may print its own warnings.
+- GStreamer is not imported or initialized by the library. The probe on this host
+  (`gst-inspect-1.0 1.28.8`) found `wavparse`, `autoaudiosink` and the optional `scaletempo` missing.
+  A WAV file therefore fails with `Your GStreamer installation is missing a plug-in`; an
+  Ogg/Vorbis file decodes but fails with `The autoaudiosink element is missing`. GstPlay also logs
+  its own `GStreamer-Play-WARNING: scaletempo element not available` (not a GTK warning). The test
+  prints the exact missing list on every run and asserts the error state here; on a complete
+  installation the same test plays the WAV and asserts `playing = true` and a growing timestamp.
 
 ## Canvas
 
@@ -99,12 +109,17 @@ one of `fill`, `contain`, `cover`, `scale-down`.
   `GLib.MainContext.iteration()`), so the draw test presents a real window in a child process.
 
 `VGLArea` exposes `has-depth-buffer`, `has-stencil-buffer`, `use-es` and `auto-render`. On the
-current X11 display a real GL context is created (`GdkX11GLContextEGL`) and `@render` is called once
-the window is allocated, but the suite follows the wave-4 rule and tests only the properties: GL
-tests stay desktop-only. The component never crashes when no context appears; `@render` receives
-`null` (and the handle exposes `context = null`, `api`, `error`). Returning `true` from a native
-`@render` handler keeps GTK from clearing the framebuffer; the observer in the component always
-returns `false` so the caller's return value decides.
+current X11 display a real GL context is created (`GdkX11GLContextEGL`, OpenGL 3.2, API 2) and
+`@render` is called once the window is allocated. `media.test.mjs` proves the frame in a child
+process: it presents a window, waits for `@render` with a non-null context, calls
+`context.makeCurrent()` and performs a real Cairo draw inside the callback. The callback returns
+`false`, so GTK clears the GL framebuffer through its own renderer. node-gtk 4.1.1 exposes the
+`Gdk.GLContext` lifecycle but no OpenGL commands (`gi:GL-1.0` is types-only), so the test cannot call
+`glClear`; that limit is stated in [`limitations.md`](limitations.md). node-gtk omits the instance
+from signal callbacks, so `@render` receives the `Gdk.GLContext` as its first (and only) argument,
+or `null` when no context exists (the handle exposes `context = null`, `api`, `error`). Returning
+`true` from a native `@render` handler keeps GTK from clearing the framebuffer; the observer in the
+component always returns `false` so the caller's return value decides.
 
 ## Value pickers and calendar
 
@@ -171,8 +186,11 @@ than forwarded into `setProperty()`, which would throw.
 
 ## Tests
 
-`packages/vio/tests/media.test.mjs` covers 16 cases: picture/texture and missing files, media state
-and notifications, empty video/controls, a real cairo draw in a child process, GL properties, all
-five pickers, the calendar, the three model resources, the selection helpers and a mount/unmount
-warning check. GStreamer is initialized only in this suite; the assertions do not require working
-codecs. The draw and presentation checks run in child processes so no nested main loop is created.
+`packages/vio/tests/media.test.mjs` covers the picture/texture and missing-file cases, media state and
+notifications, the missing-plugin error state, empty video/controls, a real cairo draw in a child
+process, a real GL frame in a child process, all five pickers, the calendar, the three model
+resources, the selection helpers and a mount/unmount warning check. GStreamer is initialized only in
+this suite. The playback test prints the exact missing plugin list, asserts the error state when
+`wavparse`/`autoaudiosink` are absent, and asserts `playing = true` plus timestamp growth when they
+exist. The draw, playback and presentation checks run in child processes so no nested main loop is
+created.

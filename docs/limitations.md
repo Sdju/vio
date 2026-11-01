@@ -335,7 +335,17 @@ These are real today and are not planned as renderer changes:
   `VGridView` for widget cells.
 - **`Gtk.TreeListModel` is not a `Gtk.TreeModel`.** On GTK 4.24 it implements only `Gio.ListModel`
   (`GObject.typeIsA` is false for `GtkTreeModel`), so `createTreeListModel()` feeds a `VColumnView`
-  through a selection, not `VTreeView`. `VTreeView` keeps taking a real `Gtk.TreeModel`.
+  through a selection, not `VTreeView`. `VTreeView` still takes a real `Gtk.TreeModel`
+  (`Gtk.ListStore`/`Gtk.TreeStore`), but its columns are now declarative:
+  `VTreeViewColumn` plus `VCellRendererText`/`Toggle`/`Pixbuf` wrappers around the real
+  `Gtk.CellRenderer*` objects. See [`data.md`](data.md#treeview-columns).
+- **Cell-renderer signals cannot be synthesized through `GObject.emit`.** node-gtk 4.1.1 fails to
+  convert the static-scope string arguments of `Gtk.CellRendererText::edited` and
+  `Gtk.CellRendererToggle::toggled` (`Cannot convert value "1" to type (null)`), and
+  `GObject.signalEmitv` crashes for the same GValues. The wrappers connect the native handlers
+  normally; their handles also expose `emitEdited(path, text)` / `emitToggled(path)`, which call the
+  same forwarding function, so tests and tools can drive the Vue event path without pretending that
+  a property is a signal. A real edit in a `Gtk.TreeView` reaches the same handler.
 - **Deprecated upstream.** `Gtk.TreeView`, `Gtk.Statusbar`, `Gtk.InfoBar` and `Gtk.IconView` are
   deprecated since GTK 4.10. The wrappers work on 4.24 and are documented as compatibility
   surfaces; new code should prefer `VColumnView`, `VGridView` and a regular `VBox`.
@@ -473,11 +483,18 @@ are in [`media.md`](media.md). The non-obvious limits:
   `Gtk-CRITICAL: gtk_gst_media_file_source_setup_cb: assertion 'stream != NULL' failed` when
   `play()` is called. `VMediaFile`/`VVideo` check `Gio.File.queryExists()` first and expose an
   empty state (`available = false`, `error`); the empty state is not an error dialog.
-- **GStreamer is optional and never initialized by the library.** With missing plugins the media
-  widgets mount, `Gtk.MediaFile` is created for an existing file, but playback may stay paused or
-  report an empty duration. Tests initialize `Gst` only in `media.test.mjs` and assert state rather
-  than audible playback. GStreamer's own warnings (`scaletempo`, missing `wavparse`) are not GTK
-  warnings; this environment has a partial plugin set.
+- **GStreamer is optional and never initialized by the library.** The media widgets mount and create
+  `Gtk.MediaFile` for an existing file even when the plugin set is incomplete. The stream then
+  reports a real error through `notify::error`; `VMediaFile`/`VVideo` forward it as `error` and
+  `@error` with `playing = false`, instead of silently looking paused. On this host
+  (`gst-inspect-1.0 1.28.8`) playback is unavailable: `wavparse` and `autoaudiosink` are missing,
+  and the optional `scaletempo` element is also missing (GstPlay logs
+  `GStreamer-Play-WARNING: scaletempo element not available`). The WAV probe therefore fails with
+  `Your GStreamer installation is missing a plug-in`; an Ogg/Vorbis probe decodes but fails at
+  `The autoaudiosink element is missing`. `media.test.mjs` prints the exact missing list, asserts
+  the empty/error state when prerequisites are absent, and switches to a real `playing = true` plus
+  timestamp-growth assertion when `wavparse` and `autoaudiosink` are present. The library itself
+  never imports `Gst`; GStreamer's own warnings are not GTK warnings.
 - **`Gtk.MediaControls` has no `playing` property.** `v-model:playing` is derived from and written
   to the attached stream's `playing` property; the internal play/pause buttons do the same. With no
   stream the model is inert.
@@ -490,10 +507,16 @@ are in [`media.md`](media.md). The non-obvious limits:
   main context has run with a delayed iteration, so the draw test presents in a child process. A JS
   exception inside the C draw callback would abort the process, so `VDrawingArea` catches it and
   emits `@error`.
-- **GL is desktop-only in the test.** On the current `:0` display `Gtk.GLArea` creates
-  `GdkX11GLContextEGL` and emits `render` once the window is allocated, but the suite tests only
-  properties, per the wave-4 rule. `@render` receives `null` when no context exists; the handle
-  exposes `context`, `api` and `error`.
+- **GL frames are real; raw GL commands are not exposed.** On the current `:0` display
+  `Gtk.GLArea` creates a `GdkX11GLContextEGL` (OpenGL 3.2, API 2) and emits `render` once the window
+  is allocated. `media.test.mjs` now proves this in a child process: it waits for `@render` with a
+  non-null context, calls `context.makeCurrent()`, performs a real Cairo draw in the callback, and
+  asserts that `Gtk.GLArea` reports no error. The callback returns `false`, so GTK clears the GL
+  framebuffer through its own renderer. node-gtk 4.1.1 exposes the `Gdk.GLContext` lifecycle but no
+  OpenGL entry points (`gi:GL-1.0` is a types-only typelib and `GstGL` does not expose draw
+  functions), so `glClear`/shader calls cannot be issued from JavaScript. That is a binding limit,
+  not a property-only test. `@render` receives `null` when no context exists; the handle exposes
+  `context`, `api` and `error`.
 - **Native boxed values in models.** `v-model:rgba` emits a `Gdk.RGBA` boxed object and
   `v-model:date` a `GLib.DateTime`; a deep `ref()` proxies them. Use `shallowRef`/`useNative()`, as
   with `Gio.ListStore`.

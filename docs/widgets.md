@@ -239,9 +239,10 @@ placement get an explicit `insertChild` / `removeChild` hook instead; see
 
 ### Deprecated classes in wave 2
 
-- `Gtk.TreeView` and `Gtk.Statusbar` are deprecated since GTK 4.10. `VTreeView` is a thin
-  `Gtk.TreeModel` wrapper and `VStatusbar` exists for existing layouts; new code should use
-  `VColumnView` and a regular `VBox`.
+- `Gtk.TreeView` and `Gtk.Statusbar` are deprecated since GTK 4.10. `VTreeView` wraps a
+  `Gtk.TreeModel` and adds declarative `VTreeViewColumn` + `VCellRendererText`/`Toggle`/`Pixbuf`
+  wrappers; `VStatusbar` exists for existing layouts. New code should still prefer `VColumnView`
+  and a regular `VBox`.
 - `Gtk.InfoBar` and `Gtk.IconView` are deprecated since GTK 4.10 as well. They still work on 4.24;
   `VInfoBar` and `VIconView` document the native API they expose. `VIconView` uses `Gtk.TreeModel`,
   not `Gio.ListModel`, and cannot host widget cells.

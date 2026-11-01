@@ -263,6 +263,151 @@ await test("VMediaControls attaches a VMediaFile handle and mirrors its playing 
   source.unmount();
 });
 
+const gstPlugin = (name) => {
+  const result = spawnSync("gst-inspect-1.0", [name], { encoding: "utf8", timeout: 10_000 });
+  return result.status === 0;
+};
+const requiredGstPlugins = ["wavparse", "autoaudiosink"];
+const optionalGstPlugins = ["scaletempo"];
+
+await test("media playback proves playing/timestamp when GStreamer plugins exist and reports the exact gap when they do not", () => {
+  const missing = requiredGstPlugins.filter((name) => !gstPlugin(name));
+  const missingOptional = optionalGstPlugins.filter((name) => !gstPlugin(name));
+  if (missing.length)
+    console.log(
+      `[media] GStreamer playback is unavailable; missing plugins: ${missing.join(", ")}` +
+        (missingOptional.length ? ` (optional missing: ${missingOptional.join(", ")})` : ""),
+    );
+  else
+    console.log(
+      `[media] GStreamer playback prerequisites present: ${requiredGstPlugins.join(", ")}` +
+        (missingOptional.length ? ` (optional missing: ${missingOptional.join(", ")})` : ""),
+    );
+
+  const source = `
+    import Gtk from "gi:Gtk-4.0";
+    import Gio from "gi:Gio-2.0";
+    import GLib from "gi:GLib-2.0";
+    import { writeFileSync } from "node:fs";
+    import { createApp, h, VBox, VMediaFile, VVideo } from "@zede/vio";
+    try {
+      const Gst = (await import("gi:Gst-1.0")).default;
+      Gst.init([]);
+    } catch {}
+    Gtk.init();
+    const tonePath = "/tmp/vio-media-playback.wav";
+    {
+      const sampleRate = 8000;
+      const length = Math.round(sampleRate * 1.5);
+      const data = Buffer.alloc(length * 2);
+      const header = Buffer.alloc(44);
+      header.write("RIFF", 0);
+      header.writeUInt32LE(36 + data.length, 4);
+      header.write("WAVE", 8);
+      header.write("fmt ", 12);
+      header.writeUInt32LE(16, 16);
+      header.writeUInt16LE(1, 20);
+      header.writeUInt16LE(1, 22);
+      header.writeUInt32LE(sampleRate, 24);
+      header.writeUInt32LE(sampleRate * 2, 28);
+      header.writeUInt16LE(2, 32);
+      header.writeUInt16LE(16, 34);
+      header.write("data", 36);
+      header.writeUInt32LE(data.length, 40);
+      writeFileSync(tonePath, Buffer.concat([header, data]));
+    }
+    const pump = (iterations = 40) => {
+      for (let index = 0; index < iterations; index++) GLib.MainContext.default().iteration(false);
+    };
+    let media;
+    let video;
+    const errors = [];
+    const playingUpdates = [];
+    const videoErrors = [];
+    const app = createApp({
+      setup: () => () => h(VBox, null, {
+        default: () => [
+          h(VMediaFile, {
+            ref: (value) => (media = value),
+            filename: tonePath,
+            onError: (error) => errors.push(error?.message ?? String(error)),
+            "onUpdate:playing": (value) => playingUpdates.push(value),
+          }),
+          h(VVideo, {
+            ref: (value) => (video = value),
+            filename: tonePath,
+            autoplay: true,
+            onError: (error) => videoErrors.push(error?.message ?? String(error)),
+          }),
+        ],
+      }),
+    });
+    app.mount();
+    media.play();
+    let maxTimestamp = 0;
+    let sawPlaying = false;
+    let sawEnded = false;
+    const end = Date.now() + 1800;
+    while (Date.now() < end) {
+      pump();
+      maxTimestamp = Math.max(maxTimestamp, Number(media.timestamp ?? 0));
+      sawPlaying ||= Boolean(media.playing);
+      sawEnded ||= Boolean(media.ended);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    media.pause();
+    const report = {
+      available: media.available,
+      mediaFile: media.mediaFile?.constructor?.name ?? null,
+      playing: Boolean(media.playing),
+      sawPlaying,
+      sawEnded,
+      maxTimestamp,
+      duration: Number(media.duration ?? 0),
+      error: media.error,
+      errors,
+      playingUpdates,
+      videoPlaying: Boolean(video.playing),
+      videoError: video.error,
+      videoErrors,
+    };
+    console.log(JSON.stringify(report));
+    app.unmount();
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "@zede/vio/register", "--input-type=module", "-e", source],
+    {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+      timeout: 20_000,
+      env: process.env,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stderr, /Gtk-WARNING|Gtk-CRITICAL/);
+  assert.doesNotMatch(result.stderr, /GLib-CRITICAL|GLib-GObject-CRITICAL|Gdk-CRITICAL/);
+  const report = JSON.parse(result.stdout.trim());
+  assert.equal(report.available, true, "an existing file creates a media stream");
+
+  if (missing.length === 0) {
+    assert.equal(report.sawPlaying, true, "playback reaches playing");
+    assert.ok(report.maxTimestamp > 0, `timestamp advances: ${report.maxTimestamp}`);
+    assert.ok(
+      report.duration > 0 || report.sawEnded,
+      `duration or end is reported: ${report.duration}`,
+    );
+    assert.equal(report.error, null);
+  } else {
+    assert.equal(report.error != null, true, "the stream reports the missing-plugin error");
+    assert.equal(report.playing, false, "playback never starts without the plugins");
+    assert.equal(report.maxTimestamp, 0, "no timestamp advance without decoders and a sink");
+    assert.match(report.error, /missing a plug-in|not available|No suitable plugins/i);
+    assert.equal(report.videoError != null, true, "VVideo surfaces the same stream error");
+    console.log(`[media] Gtk.MediaFile error: ${report.error.split("\n")[0]}`);
+  }
+});
+
 await test("VDrawingArea draws with Cairo in a presented window", () => {
   const source = `
     import Gtk from "gi:Gtk-4.0";
@@ -357,6 +502,105 @@ await test("VGLArea maps render properties and reports its context without a win
   assert.equal(handle.context, null, "no context exists before realization");
   assert.equal(typeof handle.api, "number", "Gtk.GLArea reports its API enum before realization");
   app.unmount();
+});
+
+await test("VGLArea receives a real frame with a live context in a child process", () => {
+  const source = `
+    import Gtk from "gi:Gtk-4.0";
+    import GLib from "gi:GLib-2.0";
+    import Cairo from "gi:cairo";
+    import { statSync } from "node:fs";
+    import { createApp, h, VGLArea, VWindow } from "@zede/vio";
+    Gtk.init();
+    let handle;
+    let frames = 0;
+    let contextType = null;
+    let madeCurrent = false;
+    let cairoBytes = 0;
+    const errors = [];
+    const app = createApp({
+      setup: () => () => h(VWindow, {
+        title: "gl frame",
+        defaultWidth: 320,
+        defaultHeight: 240,
+        visible: true,
+      }, {
+        default: () => h(VGLArea, {
+          ref: (value) => (handle = value),
+          hasDepthBuffer: true,
+          autoRender: true,
+          onRender: (context) => {
+            frames++;
+            if (!context) {
+              errors.push("render without a context");
+              return false;
+            }
+            contextType = context.constructor.name;
+            try {
+              context.makeCurrent();
+              madeCurrent = true;
+            } catch (error) {
+              errors.push(error?.message ?? String(error));
+            }
+            if (cairoBytes === 0) {
+              // node-gtk exposes no OpenGL command bindings, so the callback draws with Cairo and
+              // returns false: GTK then clears the GL framebuffer through its own renderer.
+              const surface = new Cairo.ImageSurface(Cairo.Format.ARGB32, 8, 8);
+              const cr = new Cairo.Context(surface);
+              cr.setSourceRgb(0.2, 0.6, 0.3);
+              cr.rectangle(0, 0, 8, 8);
+              cr.fill();
+              surface.flush();
+              surface.writeToPng("/tmp/vio-gl-frame.png");
+              cairoBytes = statSync("/tmp/vio-gl-frame.png").size;
+            }
+            return false;
+          },
+        }),
+      }),
+    });
+    app.mount();
+    const end = Date.now() + 2000;
+    while (Date.now() < end && frames === 0) {
+      for (let index = 0; index < 40; index++) GLib.MainContext.default().iteration(false);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    for (let index = 0; index < 40; index++) GLib.MainContext.default().iteration(false);
+    console.log(JSON.stringify({
+      frames,
+      contextType,
+      handleContext: handle?.context?.constructor?.name ?? null,
+      api: handle?.api,
+      error: handle?.widget?.getError()?.message ?? null,
+      madeCurrent,
+      cairoBytes,
+      errors,
+    }));
+    app.unmount();
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "@zede/vio/register", "--input-type=module", "-e", source],
+    {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+      timeout: 20_000,
+      env: process.env,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.doesNotMatch(result.stderr, /Gtk-WARNING|Gtk-CRITICAL/);
+  assert.doesNotMatch(result.stderr, /GLib-CRITICAL|GLib-GObject-CRITICAL|Gdk-CRITICAL/);
+  const report = JSON.parse(result.stdout.trim());
+  assert.ok(report.frames >= 1, `the render signal fired: ${JSON.stringify(report)}`);
+  assert.ok(report.contextType, "the frame carries a native GL context");
+  assert.equal(report.handleContext, report.contextType);
+  assert.equal(typeof report.api, "number", "the context reports its GL API");
+  assert.equal(report.error, null, "Gtk.GLArea reports no error");
+  assert.equal(report.madeCurrent, true, "the context can be made current");
+  assert.ok(report.cairoBytes > 0, "the render callback performed real Cairo drawing");
+  assert.deepEqual(report.errors, []);
+  console.log(`[media] GL frame: ${report.contextType}, api=${report.api}`);
 });
 
 await test("VColorButton maps rgba strings/objects and emits color-set", async () => {

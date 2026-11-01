@@ -343,11 +343,20 @@ export const VMediaFile = defineComponent({
       duration.value = Number(bound.getDuration());
       timestamp.value = Number(bound.getTimestamp());
     };
+    const onError = () => {
+      if (!bound || disposed) return;
+      const nativeError = bound.getError() ?? null;
+      const message = nativeError?.message ?? "media stream error";
+      error.value = message;
+      playing.value = bound.getPlaying();
+      emit("error", nativeError ?? new Error(message));
+    };
     const detach = () => {
       bound?.off("notify::playing", readState);
       bound?.off("notify::ended", onEnded);
       bound?.off("notify::duration", onProgress);
       bound?.off("notify::timestamp", onProgress);
+      bound?.off("notify::error", onError);
       bound = null;
     };
     const play = () => {
@@ -412,6 +421,7 @@ export const VMediaFile = defineComponent({
       created.on("notify::ended", onEnded);
       created.on("notify::duration", onProgress);
       created.on("notify::timestamp", onProgress);
+      created.on("notify::error", onError);
       if (props.playing === true) play();
     };
     onMounted(sync);
@@ -491,9 +501,18 @@ export const VVideo = defineComponent({
       ended.value = true;
       emit("ended");
     };
+    const onError = () => {
+      if (!bound || disposed) return;
+      const nativeError = bound.getError() ?? null;
+      const message = nativeError?.message ?? "media stream error";
+      error.value = message;
+      playing.value = bound.getPlaying();
+      emit("error", nativeError ?? new Error(message));
+    };
     const detach = () => {
       bound?.off("notify::playing", onPlaying);
       bound?.off("notify::ended", onEnded);
+      bound?.off("notify::error", onError);
       bound = null;
     };
     const sync = () => {
@@ -533,6 +552,7 @@ export const VVideo = defineComponent({
       stream.value = markRaw(next);
       bound.on("notify::playing", onPlaying);
       bound.on("notify::ended", onEnded);
+      bound.on("notify::error", onError);
       if (props.autoplay) {
         try {
           bound.play();

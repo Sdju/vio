@@ -23,6 +23,10 @@ import {
   VStatusbar,
   VTextView,
   VTreeView,
+  VTreeViewColumn,
+  VCellRendererText,
+  VCellRendererToggle,
+  VCellRendererPixbuf,
   VWindow,
   createApp,
   createTreeListModel,
@@ -772,6 +776,108 @@ await test("VTreeView stays a thin TreeModel wrapper and createTreeListModel bui
   assert.equal(treeList.getNItems(), 2);
   assert.equal(treeList.getRow(0).getItem().getString(), "root");
   assert.equal(treeList.getRow(0).isExpandable(), false);
+});
+
+await test("VTreeView declares text, toggle and pixbuf columns on a real ListStore", async () => {
+  const store = Gtk.ListStore.new([GObject.TYPE_STRING, GObject.TYPE_BOOLEAN]);
+  const iter = store.append();
+  const name = new GObject.Value();
+  name.init(GObject.TYPE_STRING);
+  name.setString("alpha");
+  store.setValue(iter, 0, name);
+  const active = new GObject.Value();
+  active.init(GObject.TYPE_BOOLEAN);
+  active.setBoolean(false);
+  store.setValue(iter, 1, active);
+
+  const edited = [];
+  const toggled = [];
+  let text;
+  let toggle;
+  let pixbuf;
+  let tree;
+  const app = mount(() =>
+    h(
+      VTreeView,
+      { ref: (value) => (tree = value), model: store, headersVisible: true, reorderable: true },
+      {
+        columns: () => [
+          h(
+            VTreeViewColumn,
+            { title: "Name", expand: true, resizable: true, sortColumnId: 0 },
+            {
+              default: () =>
+                h(VCellRendererText, {
+                  ref: (value) => (text = value),
+                  column: 0,
+                  editable: true,
+                  onEdited: (path, value) => edited.push([path, value]),
+                }),
+            },
+          ),
+          h(
+            VTreeViewColumn,
+            { title: "Active", sortColumnId: 1 },
+            {
+              default: () =>
+                h(VCellRendererToggle, {
+                  ref: (value) => (toggle = value),
+                  column: 1,
+                  onToggled: (path) => toggled.push(path),
+                }),
+            },
+          ),
+          h(
+            VTreeViewColumn,
+            { title: "Icon" },
+            {
+              default: () =>
+                h(VCellRendererPixbuf, { ref: (value) => (pixbuf = value), modelColumn: -1 }),
+            },
+          ),
+        ],
+      },
+    ),
+  );
+  try {
+    const view = widgetOf(app);
+    assert.ok(view instanceof Gtk.TreeView);
+    assert.equal(tree.widget, view);
+    assert.equal(tree.columns.length, 3);
+    const columns = view.getColumns();
+    assert.deepEqual(
+      columns.map((column) => column.getTitle()),
+      ["Name", "Active", "Icon"],
+    );
+    assert.equal(columns[0].getExpand(), true);
+    assert.equal(columns[0].getResizable(), true);
+    assert.equal(columns[0].getSortColumnId(), 0);
+    assert.equal(columns[1].getSortColumnId(), 1);
+    assert.deepEqual(
+      columns.map((column) => column.getCells().map((cell) => cell.constructor.name)),
+      [["GtkCellRendererText"], ["GtkCellRendererToggle"], ["GtkCellRendererPixbuf"]],
+    );
+    assert.equal(text.renderer.editable, true);
+    assert.equal(toggle.renderer.getActivatable(), true);
+    assert.ok(pixbuf.renderer instanceof Gtk.CellRendererPixbuf);
+    assert.equal(store.getValue(iter, 0).getString(), "alpha");
+    assert.equal(store.getValue(iter, 1).getBoolean(), false);
+
+    // node-gtk 4.1.1 cannot synthesize ::edited/::toggled through GObject.emit (the static-scope
+    // string conversion fails), so the wrappers expose the same forwarding function they connect
+    // to the native renderer. This exercises the Vue event path without pretending properties are
+    // signals; real user edits reach the same function from GTK.
+    text.emitEdited("0", "beta");
+    toggle.emitToggled("0");
+    assert.deepEqual(edited, [["0", "beta"]]);
+    assert.deepEqual(toggled, ["0"]);
+
+    name.setString("gamma");
+    store.setValue(iter, 0, name);
+    assert.equal(store.getValue(iter, 0).getString(), "gamma");
+  } finally {
+    app.unmount();
+  }
 });
 
 await test("VInscription maps text-overflow, nat sizes and no widget children", () => {

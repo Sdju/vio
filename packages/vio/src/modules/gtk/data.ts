@@ -1127,9 +1127,28 @@ export const VStatusbar = defineComponent({
 });
 
 /* ------------------------------------------------------------------------------------------------
- * Legacy tree view. Gtk.TreeView and Gtk.Statusbar are deprecated upstream since GTK 4.10; the
- * wrapper deliberately stays thin and adds no column or cell-renderer machinery.
+ * Legacy tree view. Gtk.TreeView and Gtk.Statusbar are deprecated upstream since GTK 4.10.
+ * Columns are declared through `VTreeViewColumn` with `VCellRendererText`/`Toggle`/`Pixbuf`
+ * wrappers around the real `Gtk.CellRenderer*` objects; the wrappers are not internal cell parts.
  * ---------------------------------------------------------------------------------------------- */
+
+const treeViewKey = "vio-tree-view";
+const treeColumnKey = "vio-tree-view-column";
+
+interface TreeViewApi {
+  add(column: InstanceType<typeof Gtk.TreeViewColumn>): void;
+  remove(column: InstanceType<typeof Gtk.TreeViewColumn>): void;
+}
+
+interface TreeColumnApi {
+  pack(renderer: InstanceType<typeof Gtk.CellRenderer>): void;
+  attribute(
+    renderer: InstanceType<typeof Gtk.CellRenderer>,
+    attribute: string,
+    modelColumn: number,
+  ): void;
+  clear(renderer: InstanceType<typeof Gtk.CellRenderer>): void;
+}
 
 export const VTreeView = defineComponent({
   name: "VTreeView",
@@ -1139,17 +1158,214 @@ export const VTreeView = defineComponent({
     headersVisible: { type: Boolean as PropType<boolean | undefined>, default: undefined },
     reorderable: { type: Boolean as PropType<boolean | undefined>, default: undefined },
   },
-  setup(props, { attrs, expose }) {
+  setup(props, { attrs, slots, expose }) {
     const { element, expose: handle } = useElement();
-    expose(handle);
+    const pending = new Set<InstanceType<typeof Gtk.TreeViewColumn>>();
+    const attached = new Set<InstanceType<typeof Gtk.TreeViewColumn>>();
+    let mountedView: InstanceType<typeof Gtk.TreeView> | null = null;
+    const view = () =>
+      (element.value?.widget as InstanceType<typeof Gtk.TreeView> | undefined) ??
+      mountedView ??
+      undefined;
+    const flush = () => {
+      const treeView = view();
+      if (!treeView) return;
+      for (const column of pending) {
+        treeView.appendColumn(column);
+        attached.add(column);
+      }
+      pending.clear();
+    };
+    const api: TreeViewApi = {
+      add(column) {
+        pending.add(column);
+        flush();
+      },
+      remove(column) {
+        pending.delete(column);
+        const treeView = view();
+        if (treeView && attached.has(column)) {
+          treeView.removeColumn(column);
+          attached.delete(column);
+        }
+      },
+    };
+    provide(treeViewKey, api);
+    onMounted(() => {
+      mountedView =
+        (element.value?.widget as InstanceType<typeof Gtk.TreeView> | undefined) ?? null;
+      flush();
+    });
+    onUnmounted(() => {
+      const treeView = view();
+      if (treeView) treeView.setModel(null);
+      attached.clear();
+      pending.clear();
+    });
+    expose({
+      element: handle.element,
+      get widget() {
+        return handle.widget;
+      },
+      get columns() {
+        return view()?.getColumns() ?? [];
+      },
+    });
     return () =>
-      h("tree-view", {
-        ...attrs,
-        ref: element,
-        model: props.model,
-        ...(props.headersVisible === undefined ? {} : { headersVisible: props.headersVisible }),
-        ...(props.reorderable === undefined ? {} : { reorderable: props.reorderable }),
-      });
+      h(
+        "tree-view",
+        {
+          ...attrs,
+          ref: element,
+          model: props.model,
+          ...(props.headersVisible === undefined ? {} : { headersVisible: props.headersVisible }),
+          ...(props.reorderable === undefined ? {} : { reorderable: props.reorderable }),
+        },
+        slots.columns?.(),
+      );
+  },
+});
+
+export const VTreeViewColumn = defineComponent({
+  name: "VTreeViewColumn",
+  props: {
+    title: { type: String as PropType<string | undefined>, default: undefined },
+    expand: { type: Boolean, default: false },
+    resizable: { type: Boolean, default: false },
+    sortColumnId: { type: Number, default: -1 },
+    minWidth: { type: Number, default: -1 },
+  },
+  setup(props, { slots, expose }) {
+    const column = new Gtk.TreeViewColumn();
+    const refresh = () => {
+      column.title = props.title ?? "";
+      column.setExpand(props.expand);
+      column.setResizable(props.resizable);
+      column.setSortColumnId(props.sortColumnId);
+      if (props.minWidth >= 0) column.setMinWidth(props.minWidth);
+    };
+    refresh();
+    watch(
+      () =>
+        [props.title, props.expand, props.resizable, props.sortColumnId, props.minWidth] as const,
+      refresh,
+      { flush: "post" },
+    );
+    const api: TreeColumnApi = {
+      pack(renderer) {
+        column.packStart(renderer, true);
+      },
+      attribute(renderer, attribute, modelColumn) {
+        if (modelColumn >= 0) column.addAttribute(renderer, attribute, modelColumn);
+      },
+      clear(renderer) {
+        column.clearAttributes(renderer);
+      },
+    };
+    provide(treeColumnKey, api);
+    const viewApi = inject<TreeViewApi | null>(treeViewKey, null);
+    onMounted(() => viewApi?.add(column));
+    onUnmounted(() => viewApi?.remove(column));
+    expose({
+      column,
+      get widget() {
+        return column;
+      },
+      get renderers() {
+        return column.getCells();
+      },
+    });
+    return () => slots.default?.();
+  },
+});
+
+function useCellRenderer<T extends InstanceType<typeof Gtk.CellRenderer>>(
+  create: () => T,
+  props: { column: number; modelColumn: number; attribute: string },
+) {
+  const renderer = create();
+  const api = inject<TreeColumnApi | null>(treeColumnKey, null);
+  const modelColumn = () => (props.column >= 0 ? props.column : props.modelColumn);
+  const applyAttribute = () => {
+    api?.clear(renderer);
+    api?.attribute(renderer, props.attribute, modelColumn());
+  };
+  onMounted(() => {
+    api?.pack(renderer);
+    applyAttribute();
+  });
+  watch(() => [props.column, props.modelColumn, props.attribute] as const, applyAttribute, {
+    flush: "post",
+  });
+  onUnmounted(() => api?.clear(renderer));
+  return renderer;
+}
+
+const cellColumnProps = {
+  column: { type: Number, default: -1 },
+  modelColumn: { type: Number, default: -1 },
+};
+
+export const VCellRendererText = defineComponent({
+  name: "VCellRendererText",
+  props: {
+    ...cellColumnProps,
+    attribute: { type: String, default: "text" },
+    editable: { type: Boolean, default: false },
+    xalign: { type: Number as PropType<number | undefined>, default: undefined },
+  },
+  emits: ["edited"],
+  setup(props, { expose, emit }) {
+    const renderer = useCellRenderer(() => new Gtk.CellRendererText(), props);
+    const forward = (path: string, text: string) => emit("edited", path, text);
+    const apply = () => {
+      renderer.editable = props.editable;
+      if (props.xalign !== undefined) renderer.xalign = props.xalign;
+    };
+    apply();
+    watch(() => [props.editable, props.xalign] as const, apply, { flush: "post" });
+    renderer.on("edited", forward);
+    onUnmounted(() => renderer.off("edited", forward));
+    expose({ renderer, widget: renderer, emitEdited: forward });
+    return () => null;
+  },
+});
+
+export const VCellRendererToggle = defineComponent({
+  name: "VCellRendererToggle",
+  props: {
+    ...cellColumnProps,
+    attribute: { type: String, default: "active" },
+    activatable: { type: Boolean, default: true },
+    radio: { type: Boolean, default: false },
+  },
+  emits: ["toggled"],
+  setup(props, { expose, emit }) {
+    const renderer = useCellRenderer(() => new Gtk.CellRendererToggle(), props);
+    const forward = (path: string) => emit("toggled", path);
+    const apply = () => {
+      renderer.activatable = props.activatable;
+      renderer.radio = props.radio;
+    };
+    apply();
+    watch(() => [props.activatable, props.radio] as const, apply, { flush: "post" });
+    renderer.on("toggled", forward);
+    onUnmounted(() => renderer.off("toggled", forward));
+    expose({ renderer, widget: renderer, emitToggled: forward });
+    return () => null;
+  },
+});
+
+export const VCellRendererPixbuf = defineComponent({
+  name: "VCellRendererPixbuf",
+  props: {
+    ...cellColumnProps,
+    attribute: { type: String, default: "pixbuf" },
+  },
+  setup(props, { expose }) {
+    const renderer = useCellRenderer(() => new Gtk.CellRendererPixbuf(), props);
+    expose({ renderer, widget: renderer });
+    return () => null;
   },
 });
 

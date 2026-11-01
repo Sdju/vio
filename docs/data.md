@@ -5,27 +5,31 @@ more than a property mapping: native models and factories, two-way text bindings
 placement. The components remain thin wrappers over the same renderer and placement hooks.
 
 ```bash
-vp run --filter @zede/vio demo:data   # shared store in ColumnView + GridView, search, InfoBar, TextView
+vp run --filter @zede/vio demo:data   # shared store in ColumnView + GridView, TreeView columns, search, InfoBar, TextView
 ```
 
 ## Components
 
-| Component           | GTK widget                            | `v-model`                                | Model                                            | Slots                                     | Limitations                                        |
-| ------------------- | ------------------------------------- | ---------------------------------------- | ------------------------------------------------ | ----------------------------------------- | -------------------------------------------------- |
-| `VColumnView`       | `Gtk.ColumnView`                      | `v-model:selected` (`number`/`number[]`) | `Gio.ListModel`, wrapped in a selection per mode | `#columns` with `VColumnViewColumn`       | columns appended; no column reordering             |
-| `VColumnViewColumn` | `Gtk.ColumnViewColumn` (not a widget) | none                                     | none                                             | `#cell="{ item, position }"`              | slot root must be a GTK widget                     |
-| `VGridView`         | `Gtk.GridView`                        | `v-model:selected` (`number`/`number[]`) | `Gio.ListModel`, wrapped in a selection per mode | `#item="{ item, position }"`              | one factory per view                               |
-| `VIconView`         | `Gtk.IconView`                        | `v-model:selected` (`number`/`number[]`) | `Gtk.TreeModel`                                  | none (`#item` throws)                     | legacy model; no widget cells; deprecated upstream |
-| `VTextView`         | `Gtk.TextView`                        | `v-model:text`                           | `buffer` prop (`Gtk.TextBuffer`)                 | none                                      | buffer signals coalesced in a microtask            |
-| `VEditableLabel`    | `Gtk.EditableLabel`                   | `v-model:text`                           | none                                             | none                                      | equality guard preserves the caret                 |
-| `VSearchEntry`      | `Gtk.SearchEntry`                     | `v-model:text`                           | none                                             | none                                      | `search` proxies immediate `changed`, no debounce  |
-| `VInscription`      | `Gtk.Inscription`                     | none                                     | none                                             | none; `text` or `markup`                  | `text` and `markup` are mutually exclusive         |
-| `VSearchBar`        | `Gtk.SearchBar`                       | manual `search-mode-enabled` pair        | none                                             | default: exactly one `VSearchEntry`       | no SFC `v-model` allowlist entry                   |
-| `VActionBar`        | `Gtk.ActionBar`                       | none                                     | none                                             | `#start`, `#end` (default fills `#start`) | repacks a role group on reorder                    |
-| `VInfoBar`          | `Gtk.InfoBar`                         | none                                     | none                                             | `#content` (default), `#action`           | action items must be activatable widgets           |
-| `VStatusbar`        | `Gtk.Statusbar`                       | none                                     | `messages: string[]`                             | none                                      | shows the last message; deprecated upstream        |
-| `VTreeView`         | `Gtk.TreeView`                        | none                                     | `Gtk.TreeModel`                                  | none                                      | deprecated upstream; use `VColumnView`             |
-| `VListModel`        | none (resource)                       | `selected` prop                          | `items: string[]`                                | none                                      | string items only                                  |
+| Component             | GTK widget                              | `v-model`                                | Model                                            | Slots                                     | Limitations                                        |
+| --------------------- | --------------------------------------- | ---------------------------------------- | ------------------------------------------------ | ----------------------------------------- | -------------------------------------------------- |
+| `VColumnView`         | `Gtk.ColumnView`                        | `v-model:selected` (`number`/`number[]`) | `Gio.ListModel`, wrapped in a selection per mode | `#columns` with `VColumnViewColumn`       | columns appended; no column reordering             |
+| `VColumnViewColumn`   | `Gtk.ColumnViewColumn` (not a widget)   | none                                     | none                                             | `#cell="{ item, position }"`              | slot root must be a GTK widget                     |
+| `VGridView`           | `Gtk.GridView`                          | `v-model:selected` (`number`/`number[]`) | `Gio.ListModel`, wrapped in a selection per mode | `#item="{ item, position }"`              | one factory per view                               |
+| `VIconView`           | `Gtk.IconView`                          | `v-model:selected` (`number`/`number[]`) | `Gtk.TreeModel`                                  | none (`#item` throws)                     | legacy model; no widget cells; deprecated upstream |
+| `VTextView`           | `Gtk.TextView`                          | `v-model:text`                           | `buffer` prop (`Gtk.TextBuffer`)                 | none                                      | buffer signals coalesced in a microtask            |
+| `VEditableLabel`      | `Gtk.EditableLabel`                     | `v-model:text`                           | none                                             | none                                      | equality guard preserves the caret                 |
+| `VSearchEntry`        | `Gtk.SearchEntry`                       | `v-model:text`                           | none                                             | none                                      | `search` proxies immediate `changed`, no debounce  |
+| `VInscription`        | `Gtk.Inscription`                       | none                                     | none                                             | none; `text` or `markup`                  | `text` and `markup` are mutually exclusive         |
+| `VSearchBar`          | `Gtk.SearchBar`                         | manual `search-mode-enabled` pair        | none                                             | default: exactly one `VSearchEntry`       | no SFC `v-model` allowlist entry                   |
+| `VActionBar`          | `Gtk.ActionBar`                         | none                                     | none                                             | `#start`, `#end` (default fills `#start`) | repacks a role group on reorder                    |
+| `VInfoBar`            | `Gtk.InfoBar`                           | none                                     | none                                             | `#content` (default), `#action`           | action items must be activatable widgets           |
+| `VStatusbar`          | `Gtk.Statusbar`                         | none                                     | `messages: string[]`                             | none                                      | shows the last message; deprecated upstream        |
+| `VTreeView`           | `Gtk.TreeView`                          | none                                     | `Gtk.TreeModel`                                  | `#columns` with `VTreeViewColumn`         | deprecated upstream; use `VColumnView`             |
+| `VTreeViewColumn`     | `Gtk.TreeViewColumn` (not a widget)     | none                                     | none                                             | default: cell-renderer wrappers           | native columns are append-only                     |
+| `VCellRendererText`   | `Gtk.CellRendererText` (not a widget)   | none                                     | `column` / `modelColumn` index                   | none                                      | `@edited(path, text)`                              |
+| `VCellRendererToggle` | `Gtk.CellRendererToggle` (not a widget) | none                                     | `column` / `modelColumn` index                   | none                                      | `@toggled(path)`                                   |
+| `VCellRendererPixbuf` | `Gtk.CellRendererPixbuf` (not a widget) | none                                     | `column` / `modelColumn` index                   | none                                      | binds a `GdkPixbuf` model column                   |
+| `VListModel`          | none (resource)                         | `selected` prop                          | `items: string[]`                                | none                                      | string items only                                  |
 
 `VColumnView`, `VGridView` and `VIconView` also accept `modelValue` as an alias for `selected`.
 In `multiple` mode the value is a `number[]` of positions; in `single` and `none` it is a single
@@ -130,11 +134,61 @@ wrapper. `response` and `close` are native signals and are forwarded unchanged:
 in array order. GTK's statusbar shows the last pushed message. `.widget` on the component ref is the
 escape hatch for the rest of the statusbar API.
 
+## TreeView columns
+
+`VTreeView` remains a wrapper around a real `Gtk.TreeModel`, but columns no longer have to be
+assembled imperatively. `VTreeViewColumn` owns one real `Gtk.TreeViewColumn`; its default slot
+contains cell-renderer wrapper components, each of which owns the corresponding real
+`Gtk.CellRendererText`, `Gtk.CellRendererToggle` or `Gtk.CellRendererPixbuf`. These wrappers are not
+internal GTK parts: they are the actual renderer objects, exposed as `handle.renderer` / `.widget`.
+
+```vue
+<VTreeView :model="treeStore" :headers-visible="true">
+  <template #columns>
+    <VTreeViewColumn title="Name" :expand="true" :resizable="true" :sort-column-id="0">
+      <VCellRendererText :column="0" :editable="true" @edited="onEdited" />
+    </VTreeViewColumn>
+    <VTreeViewColumn title="Active" :sort-column-id="1">
+      <VCellRendererToggle :column="1" @toggled="onToggled" />
+    </VTreeViewColumn>
+    <VTreeViewColumn title="Icon">
+      <VCellRendererPixbuf :column="2" />
+    </VTreeViewColumn>
+  </template>
+</VTreeView>
+```
+
+| Prop (column)    | Native property                     |
+| ---------------- | ----------------------------------- |
+| `title`          | `Gtk.TreeViewColumn:title`          |
+| `expand`         | `:expand`                           |
+| `resizable`      | `:resizable`                        |
+| `sort-column-id` | `:sort-column-id` (`-1` = unsorted) |
+| `min-width`      | `:min-width` when non-negative      |
+
+| Renderer              | Default attribute | Model binding / events                                                     |
+| --------------------- | ----------------- | -------------------------------------------------------------------------- |
+| `VCellRendererText`   | `text`            | `column`/`model-column` index; `editable`, `xalign`, `@edited(path, text)` |
+| `VCellRendererToggle` | `active`          | `column`/`model-column` index; `activatable`, `radio`, `@toggled(path)`    |
+| `VCellRendererPixbuf` | `pixbuf`          | `column`/`model-column` index                                              |
+
+`column` and `modelColumn` are aliases; a non-negative value calls
+`Gtk.TreeViewColumn.addAttribute(renderer, attribute, index)`. Use `attribute` to bind a different
+renderer property to the same model column. Columns are appended in declaration order and removed
+from the view on unmount; GTK has no column insertion/reorder API, so a reorder is a remove plus
+append if you do it imperatively.
+
+node-gtk 4.1.1 cannot synthesize `::edited`/`::toggled` with `GObject.emit` (static-scope string
+conversion fails) and `GObject.signalEmitv` crashes for those GValues. The components still connect
+the native handlers; their handles expose `emitEdited(path, text)` / `emitToggled(path)`, which call
+the same forwarding function for tests and tools. A real edit in the view reaches that function from
+GTK ([`limitations.md`](limitations.md)).
+
 ## Deprecated upstream
 
-- `Gtk.TreeView` is deprecated since GTK 4.10. `VTreeView` is intentionally a thin wrapper around
-  `model` (`Gtk.TreeModel`), `headers-visible` and `reorderable`; it adds no column or cell-renderer
-  machinery. **Use `VColumnView` for new code.**
+- `Gtk.TreeView` is deprecated since GTK 4.10. `VTreeView` is a wrapper around `model`
+  (`Gtk.TreeModel`), `headers-visible`, `reorderable` and the declarative column/renderer
+  components above. **Use `VColumnView` for new code.**
 - `Gtk.Statusbar` is deprecated since GTK 4.10. `VStatusbar` is kept for existing layouts, but no
   other API should be built on it.
 - `Gtk.InfoBar` is deprecated since GTK 4.10. It still works on 4.24 and remains the only native
@@ -146,4 +200,4 @@ escape hatch for the rest of the statusbar API.
 `Gtk.TreeListModel`. On GTK 4.24 that model implements only `Gio.ListModel` (verified with
 `GObject.typeIsA`: it does **not** implement `Gtk.TreeModel`), so it feeds a `VColumnView` through a
 selection, not `VTreeView`. `VTreeView` keeps taking a real `Gtk.TreeModel` such as `Gtk.TreeStore`
-or `Gtk.ListStore`.
+or `Gtk.ListStore`; its columns are described with `VTreeViewColumn` and the cell-renderer wrappers.

@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import Gtk from "gi:Gtk-4.0";
 import Gio from "gi:Gio-2.0";
+import GObject from "gi:GObject-2.0";
 import { getGType } from "node-gtk";
 import {
   VBox,
   VButton,
+  VCellRendererText,
+  VCellRendererToggle,
   VColumnView,
   VColumnViewColumn,
   VGridView,
@@ -13,6 +16,8 @@ import {
   VSearchEntry,
   VTextView,
   VToggleButton,
+  VTreeView,
+  VTreeViewColumn,
   VWindow,
   ref,
   useNative,
@@ -50,6 +55,48 @@ function rebuild() {
   count.value = items.length;
 }
 rebuild();
+
+const treeStore = Gtk.TreeStore.new([GObject.TYPE_STRING, GObject.TYPE_BOOLEAN]);
+function appendRow(parent, label, active) {
+  const iter = treeStore.append(parent);
+  const text = new GObject.Value();
+  text.init(GObject.TYPE_STRING);
+  text.setString(label);
+  treeStore.setValue(iter, 0, text);
+  const flag = new GObject.Value();
+  flag.init(GObject.TYPE_BOOLEAN);
+  flag.setBoolean(active);
+  treeStore.setValue(iter, 1, flag);
+  return iter;
+}
+const team = appendRow(null, "Team", false);
+appendRow(team, "Ada Lovelace", true);
+appendRow(team, "Grace Hopper", true);
+const guests = appendRow(null, "Guests", false);
+appendRow(guests, "Alan Turing", false);
+const editedLog = ref("Edit a name or toggle a row.");
+
+function writeValue(path, column, value) {
+  const [found, iter] = treeStore.getIterFromString(path);
+  if (!found) return;
+  treeStore.setValue(iter, column, value);
+}
+function onEdited(path, text) {
+  const value = new GObject.Value();
+  value.init(GObject.TYPE_STRING);
+  value.setString(text);
+  writeValue(path, 0, value);
+  editedLog.value = `edited ${path}: ${text}`;
+}
+function onToggled(path) {
+  const [found, iter] = treeStore.getIterFromString(path);
+  if (!found) return;
+  const value = new GObject.Value();
+  value.init(GObject.TYPE_BOOLEAN);
+  value.setBoolean(!treeStore.getValue(iter, 1).getBoolean());
+  treeStore.setValue(iter, 1, value);
+  editedLog.value = `toggled ${path}`;
+}
 
 function closeInfo() {
   showInfo.value = false;
@@ -147,6 +194,22 @@ function close() {
             </VBox>
           </template>
         </VGridView>
+      </gtk-frame>
+
+      <gtk-frame label="VTreeView (TreeStore + cell renderers)">
+        <VBox :spacing="4">
+          <VTreeView :model="treeStore" :headers-visible="true" :height-request="150">
+            <template #columns>
+              <VTreeViewColumn title="Name" :expand="true" :resizable="true" :sort-column-id="0">
+                <VCellRendererText :column="0" :editable="true" @edited="onEdited" />
+              </VTreeViewColumn>
+              <VTreeViewColumn title="Active" :sort-column-id="1">
+                <VCellRendererToggle :column="1" @toggled="onToggled" />
+              </VTreeViewColumn>
+            </template>
+          </VTreeView>
+          <VLabel class="hint">{{ editedLog }}</VLabel>
+        </VBox>
       </gtk-frame>
 
       <gtk-frame label="VTextView">
