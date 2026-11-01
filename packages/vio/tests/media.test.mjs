@@ -8,6 +8,7 @@ import Gio from "gi:Gio-2.0";
 import Gdk from "gi:Gdk-4.0";
 import GLib from "gi:GLib-2.0";
 import Pango from "gi:Pango-1.0";
+import GL from "gi:GL-1.0";
 import Cairo from "gi:cairo";
 import { getGType } from "node-gtk";
 import {
@@ -502,6 +503,40 @@ await test("VGLArea maps render properties and reports its context without a win
   assert.equal(handle.context, null, "no context exists before realization");
   assert.equal(typeof handle.api, "number", "Gtk.GLArea reports its API enum before realization");
   app.unmount();
+});
+
+await test("gi:GL-1.0 exports no OpenGL entry points and Gdk.GLContext is lifecycle-only", () => {
+  // Verified on node-gtk 4.1.1: the typelib carries GL type names plus glInitNames only.
+  assert.deepEqual(Object.keys(GL).sort(), [
+    "bitfield",
+    "boolean",
+    "charARB",
+    "clampf",
+    "enum",
+    "float",
+    "handleARB",
+    "initNames",
+    "int",
+    "intptr",
+    "sizei",
+    "sizeiptr",
+    "uint",
+    "void",
+  ]);
+  for (const name of ["glClear", "glBegin", "glCreateShader", "glViewport", "glGetString"])
+    assert.equal(typeof GL[name], "undefined", `${name} is not callable from JavaScript`);
+  for (const name of ["makeCurrent", "getVersion", "getRequiredVersion", "isLegacy", "getApi"])
+    assert.equal(typeof Gdk.GLContext.prototype[name], "function", `Gdk.GLContext has ${name}()`);
+  for (const name of ["getDepth", "getStencil", "getProcAddress", "glClear"])
+    assert.equal(
+      typeof Gdk.GLContext.prototype[name],
+      "undefined",
+      `Gdk.GLContext has no ${name}()`,
+    );
+  assert.equal(typeof Gdk.GLContext.clearCurrent, "function");
+  assert.equal(typeof Gdk.GLContext.getCurrent, "function");
+  // GstGL-1.0 also has no callable GL commands. It is not imported here because loading the
+  // typelib logs three GLib-CRITICAL assertions before any vio code runs (see docs/limitations.md).
 });
 
 await test("VGLArea receives a real frame with a live context in a child process", () => {

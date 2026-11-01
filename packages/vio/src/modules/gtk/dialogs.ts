@@ -213,6 +213,13 @@ function fontLevelOf(value: number | string | string[] | undefined): number | un
   return level;
 }
 
+function fontDescriptionOf(value: unknown): InstanceType<typeof Pango.FontDescription> | null {
+  if (value == null) return null;
+  if (value instanceof Pango.FontDescription) return value;
+  if (typeof value === "string") return Pango.FontDescription.fromString(value);
+  throw new Error(`vio: font-desc must be a Pango.FontDescription or a font name string`);
+}
+
 function isPrivate(value: unknown): boolean {
   return value == null;
 }
@@ -576,6 +583,8 @@ export const VFontDialog = defineComponent({
   props: {
     title: { type: String as PropType<string | undefined>, default: undefined },
     modal: { type: Boolean as PropType<boolean | undefined>, default: undefined },
+    /** Initial font selection; without one GTK opens with no row selected and Select is insensitive. */
+    fontDesc: { type: [Object, String] as PropType<unknown>, default: null },
   },
   emits: ["font", "cancel", "error"],
   setup(props, { expose, emit }) {
@@ -592,9 +601,10 @@ export const VFontDialog = defineComponent({
       initialFont: InstanceType<typeof Pango.FontDescription> | null = null,
     ): Promise<InstanceType<typeof Pango.FontDescription> | null> => {
       const window = requireParent(parent, "VFontDialog.chooseFont()");
+      const initial = initialFont ?? fontDescriptionOf(props.fontDesc);
       return runner.run<InstanceType<typeof Pango.FontDescription>>(
         (callback, cancellable) => {
-          dialog.chooseFont(window, initialFont, cancellable, (...args: unknown[]) =>
+          dialog.chooseFont(window, initial, cancellable, (...args: unknown[]) =>
             callback(args[1]),
           );
         },

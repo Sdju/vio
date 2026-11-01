@@ -113,13 +113,26 @@ current X11 display a real GL context is created (`GdkX11GLContextEGL`, OpenGL 3
 `@render` is called once the window is allocated. `media.test.mjs` proves the frame in a child
 process: it presents a window, waits for `@render` with a non-null context, calls
 `context.makeCurrent()` and performs a real Cairo draw inside the callback. The callback returns
-`false`, so GTK clears the GL framebuffer through its own renderer. node-gtk 4.1.1 exposes the
-`Gdk.GLContext` lifecycle but no OpenGL commands (`gi:GL-1.0` is types-only), so the test cannot call
-`glClear`; that limit is stated in [`limitations.md`](limitations.md). node-gtk omits the instance
-from signal callbacks, so `@render` receives the `Gdk.GLContext` as its first (and only) argument,
-or `null` when no context exists (the handle exposes `context = null`, `api`, `error`). Returning
-`true` from a native `@render` handler keeps GTK from clearing the framebuffer; the observer in the
-component always returns `false` so the caller's return value decides.
+`false`, so GTK clears the GL framebuffer through its own renderer.
+node-gtk 4.1.1 has no callable OpenGL entry points. `gi:GL-1.0` exports exactly these fourteen
+names:
+
+```text
+bitfield, boolean, charARB, clampf, enum, float, handleARB, initNames,
+int, intptr, sizei, sizeiptr, uint, void
+```
+
+`initNames()` is the sole function; `glClear`, `glBegin` and `glCreateShader` are `undefined`.
+`Gdk.GLContext` exposes the lifecycle (`makeCurrent`, `getVersion`, `getRequiredVersion`, `isLegacy`,
+`getApi`, …) but no `getDepth`, `getStencil`, `getProcAddress` or `glClear`. `GstGL-1.0` also has no
+callable GL commands: its `gl*` exports are GStreamer helpers, `GLContext.getProcAddress()` returns a
+`gpointer` that node-gtk marshals as `undefined`, and simply importing the typelib logs three
+`GLib-CRITICAL` assertions. The test therefore draws with Cairo and cannot call `glClear`; that
+limit is stated in [`limitations.md`](limitations.md). node-gtk omits the instance from signal
+callbacks, so `@render` receives the `Gdk.GLContext` as its first (and only) argument, or `null`
+when no context exists (the handle exposes `context = null`, `api`, `error`). Returning `true` from
+a native `@render` handler keeps GTK from clearing the framebuffer; the observer in the component
+always returns `false` so the caller's return value decides.
 
 ## Value pickers and calendar
 

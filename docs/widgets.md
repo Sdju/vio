@@ -132,22 +132,22 @@ ancestor; the old soft `rootOf()` check was removed. `Gtk.DragIcon` is **not** i
 Wave 3 registers explicit `vio-*` types at the end of `getWidgetTypes()`, leaving the order of all
 wave 1 and wave 2 types unchanged:
 
-| Explicit type                | Component              | Native class              | Notes                           |
-| ---------------------------- | ---------------------- | ------------------------- | ------------------------------- |
-| `vio-application-window`     | `VApplicationWindow`   | `Gtk.ApplicationWindow`   | content + `role="titlebar"`     |
-| `vio-assistant`              | `VAssistant`           | `Gtk.Assistant`           | pages are role children         |
-| `vio-dialog`                 | `VDialog`              | `Gtk.Dialog`              | `#content` → `getContentArea()` |
-| `vio-message-dialog`         | `VMessageDialog`       | `Gtk.MessageDialog`       | no widget children              |
-| `vio-file-chooser-dialog`    | `VFileChooserDialog`   | `Gtk.FileChooserDialog`   | no widget children              |
-| `vio-color-chooser-dialog`   | `VColorChooserDialog`  | `Gtk.ColorChooserDialog`  | no widget children              |
-| `vio-font-chooser-dialog`    | `VFontChooserDialog`   | `Gtk.FontChooserDialog`   | no widget children              |
-| `vio-print-unix-dialog`      | `VPrintUnixDialog`     | `Gtk.PrintUnixDialog`     | no widget children              |
-| `vio-page-setup-unix-dialog` | `VPageSetupUnixDialog` | `Gtk.PageSetupUnixDialog` | no widget children              |
-| `vio-about-dialog`           | `VAboutDialog`         | `Gtk.AboutDialog`         | no widget children              |
-| `vio-shortcuts-window`       | `VShortcutsWindow`     | `Gtk.ShortcutsWindow`     | sections via `addSection()`     |
-| `vio-shortcuts-section`      | `VShortcutsSection`    | `Gtk.ShortcutsSection`    | groups via `addGroup()`         |
-| `vio-shortcuts-group`        | `VShortcutsGroup`      | `Gtk.ShortcutsGroup`      | rows via `addShortcut()`        |
-| `vio-shortcuts-shortcut`     | `VShortcutsShortcut`   | `Gtk.ShortcutsShortcut`   | no widget children              |
+| Explicit type                | Component              | Native class              | Notes                                               |
+| ---------------------------- | ---------------------- | ------------------------- | --------------------------------------------------- |
+| `vio-application-window`     | `VApplicationWindow`   | `Gtk.ApplicationWindow`   | content + `role="titlebar"`                         |
+| `vio-assistant`              | `VAssistant`           | `Gtk.Assistant`           | pages are role children                             |
+| `vio-dialog`                 | `VDialog`              | `Gtk.Dialog`              | `#content` → `getContentArea()`                     |
+| `vio-message-dialog`         | `VMessageDialog`       | `Gtk.MessageDialog`       | no widget children                                  |
+| `vio-file-chooser-dialog`    | `VFileChooserDialog`   | `Gtk.FileChooserDialog`   | no widget children                                  |
+| `vio-color-chooser-dialog`   | `VColorChooserDialog`  | `Gtk.ColorChooserDialog`  | no widget children                                  |
+| `vio-font-chooser-dialog`    | `VFontChooserDialog`   | `Gtk.FontChooserDialog`   | no widget children                                  |
+| `vio-print-unix-dialog`      | `VPrintUnixDialog`     | `Gtk.PrintUnixDialog`     | no widget children                                  |
+| `vio-page-setup-unix-dialog` | `VPageSetupUnixDialog` | `Gtk.PageSetupUnixDialog` | no widget children                                  |
+| `vio-about-dialog`           | `VAboutDialog`         | `Gtk.AboutDialog`         | no widget children                                  |
+| `vio-shortcuts-window`       | `VShortcutsWindow`     | `Gtk.ShortcutsWindow`     | sections via `addSection()`                         |
+| `vio-shortcuts-section`      | `VShortcutsSection`    | `Gtk.ShortcutsSection`    | groups via `addGroup()`                             |
+| `vio-shortcuts-group`        | `VShortcutsGroup`      | `Gtk.ShortcutsGroup`      | rows via `addShortcut()`, keyed moves via `Gtk.Box` |
+| `vio-shortcuts-shortcut`     | `VShortcutsShortcut`   | `Gtk.ShortcutsShortcut`   | no widget children                                  |
 
 `VFileChooserNative`, `VAlertDialog`, `VFileDialog`, `VColorDialog`, `VFontDialog` and
 `VAppChooserDialog` are null-rendering controllers; they do not register element types. The raw

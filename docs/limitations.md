@@ -451,12 +451,19 @@ rules and async cancellation contract are in [`dialogs.md`](dialogs.md). The non
   `GtkGizmo … reported min width -2` on this theme; the test installs the same local
   `slider { min-width: 16px; min-height: 16px; }` rule used by `demo:small`. The library does not
   install global CSS.
-- **`VFontDialog` cannot return a font on this host.** GTK's `GtkFontChooserWidget` renders
-  `No Fonts Found` despite 2378 `fc-list` entries; `getFont()` stays `null`, `setFont()` has no
-  effect and the Select response is insensitive. The async dialog still presents, and its Promise
-  resolves `null` only through cancellation rather than rejecting. The test asserts the dialog
-  appears and settles without a rejection, and switches to a real `Pango.FontDescription` assertion
-  when the font list is populated. This is a GTK 4.24.1/environment defect, not a vio wrapper.
+- **`VFontDialog` resolves a real font.** The earlier `No Fonts Found` conclusion was wrong. Pango's
+  shared Cairo font map lists 329 families on this host, and the dialog's chooser does list them:
+  the `No Fonts Found` `Gtk.Label` exists in the widget tree but stays unmapped
+  (`getMapped() === false`). `getFont()` is `null` and Select is insensitive only while no font is
+  selected, which is normal GTK behaviour. Passing an initial `Pango.FontDescription` (the
+  `chooseFont(parent, initial)` argument, or the declarative `font-desc` prop) preselects the row,
+  enables Select and resolves that description: the test accepts `Noto Sans 12` and asserts the
+  resulting `Pango.FontDescription`. `Gtk.FontChooser:font-map` readback is `NULL` (the chooser uses
+  the process default); explicitly calling `setFontMap(PangoCairo.fontMapGetDefault())` changes
+  nothing. The default map is the same object before and after `Gtk.init()` (329 families),
+  `Gtk.Settings:gtk-font-name` is `Noto Sans,  10`, and `Gtk.FontChooser.level` values 0/1/3/8 do
+  not change the result. The old test only cancelled because it passed no initial font, not because
+  fonts were missing.
 - **`Gtk.FileChooserDialog` needs realization for `response`.** On 4.24, `emit("response", …)` and
   button clicks on an unrealized file chooser do not reach the signal; presenting it works but
   emits unrelated GTK slider warnings in this environment. Tests inspect its properties and leave
@@ -480,15 +487,29 @@ rules and async cancellation contract are in [`dialogs.md`](dialogs.md). The non
   the removed page parented to GTK's internal `GtkStack`; the `vio-assistant` placement hook calls
   `unparent()` on the removed page so the subtree is released immediately (covered by a child-process
   test that asserts no `Gtk-CRITICAL`).
-- **`VShortcutsWindow` is wrapped, with append-only ordering.** The earlier claim that
+- **`VShortcutsWindow` is wrapped; shortcut rows are keyed-reorderable.** The earlier claim that
   `Gtk.ShortcutsSection`/`Gtk.ShortcutsGroup` are internal parts was wrong. On GTK 4.24 both are
   public, constructible `Gtk.Box` subclasses; `Gtk.ShortcutsWindow.addSection()`,
   `Gtk.ShortcutsSection.addGroup()` and `Gtk.ShortcutsGroup.addShortcut()` are public methods, and
   the result renders normally (see [`dialogs.md`](dialogs.md#shortcuts-window)). `VShortcutsWindow`,
   `VShortcutsSection`, `VShortcutsGroup` and `VShortcutsShortcut` cover that tree. `Gtk.Shortcut`
   (a non-widget `GObject`) is still not wrapped: use a `Gtk.Shortcut` in `setup` for action
-  accelerators. The add methods only append, so keyed reordering of sections/groups/shortcuts is
-  not implemented; recreate the subtree or use the raw `.widget` for a different order.
+  accelerators.
+  Shortcut rows are direct children of a group's `GtkBox`, after its internal title label. A keyed
+  move therefore uses `Gtk.Box.reorderChildAfter()` (same parent) or `insertChildAfter()` (newly
+  inserted row), touching only the moved row. The test moves the first of three shortcuts to the
+  end and back, and asserts the order, GObject identity and `notify::root === 0` for every row and
+  the group.
+  Sections and groups stay append-only because GTK gives them no reorder primitive: a section's
+  parent is the window's internal `Gtk.Stack` (`GtkShortcutsWindow` → `GtkBox` → `GtkStack`), and
+  `Gtk.Stack` has neither `reorderChildAfter()` nor `insertChildAfter()`; `addSection()` only
+  appends. Groups are appended with `addGroup()`, but GTK distributes them into internal column
+  `GtkBox`es: three groups with the default `max-height` 15 land in parents holding 2 and 1 groups,
+  and `max-height` 1 gives every group its own parent. There is no single box whose child order is
+  the group order, so a Box reorder cannot express a keyed group order across columns. Reparenting a
+  group between columns would emit two `notify::root` notifications (unparent + `insertChildAfter`,
+  measured as 2), so it is not used. Use the raw `.widget` or recreate the subtree if a different
+  section/group order is required.
 - **Portal and GtkBuildable behaviour.** `Gtk.FileDialog` uses
   `org.freedesktop.portal.FileChooser` over D-Bus when the portal is available; on a host without a
   session bus or portal it falls back to the local chooser. `GtkBuildable` XML, custom GObject
@@ -546,14 +567,35 @@ are in [`media.md`](media.md). The non-obvious limits:
   emits `@error`.
 - **GL frames are real; raw GL commands are not exposed.** On the current `:0` display
   `Gtk.GLArea` creates a `GdkX11GLContextEGL` (OpenGL 3.2, API 2) and emits `render` once the window
-  is allocated. `media.test.mjs` now proves this in a child process: it waits for `@render` with a
+  is allocated. `media.test.mjs` proves this in a child process: it waits for `@render` with a
   non-null context, calls `context.makeCurrent()`, performs a real Cairo draw in the callback, and
   asserts that `Gtk.GLArea` reports no error. The callback returns `false`, so GTK clears the GL
-  framebuffer through its own renderer. node-gtk 4.1.1 exposes the `Gdk.GLContext` lifecycle but no
-  OpenGL entry points (`gi:GL-1.0` is a types-only typelib and `GstGL` does not expose draw
-  functions), so `glClear`/shader calls cannot be issued from JavaScript. That is a binding limit,
-  not a property-only test. `@render` receives `null` when no context exists; the handle exposes
-  `context`, `api` and `error`.
+  framebuffer through its own renderer.
+  There is no callable GL entry point in node-gtk 4.1.1. `gi:GL-1.0` exports exactly these fourteen
+  names:
+
+  ```text
+  bitfield, boolean, charARB, clampf, enum, float, handleARB, initNames,
+  int, intptr, sizei, sizeiptr, uint, void
+  ```
+
+  `initNames` is the only function; `glClear`, `glBegin`, `glCreateShader`, `glViewport` and
+  `glGetString` are `undefined`. `Gdk.GLContext` is a lifecycle object: `getVersion`,
+  `getRequiredVersion`, `isLegacy`, `getApi`, `getUseEs`, `getForwardCompatible`,
+  `getDebugEnabled`, `getAllowedApis`, `isShared`, `getSharedContext`, `getDisplay`, `getSurface`,
+  `realize`, `makeCurrent`, plus the static `clearCurrent`/`getCurrent`. It has no
+  `getDepth`/`getStencil`/`getProcAddress`/`glClear`. `gi:GstGL-1.0` loads, but its `gl*` exports are
+  GStreamer helpers (`glFormat…`, `glHandle…`, `glTexture…`, …), not OpenGL commands; importing the
+  typelib logs three `GLib-CRITICAL` assertions before vio runs:
+  `g_array_append_vals: assertion 'array' failed`,
+  `g_hash_table_lookup: assertion 'hash_table != NULL' failed` and
+  `g_hash_table_insert_internal: assertion 'hash_table != NULL' failed`. Its
+  `GLContext.getProcAddress()`/`getProcAddressWithPlatform()` return a `gpointer` that node-gtk
+  marshals as `undefined`, `getCurrent()` returns `null`, and `getCurrentGlContext(platform)`
+  returns `0n`. Without a native addon, no JavaScript code can issue `glClear`; that is a binding
+  limit, not a property-only test. `@render` receives `null` when no context exists; the handle
+  exposes `context`, `api` and `error`.
+
 - **Native boxed values in models.** `v-model:rgba` emits a `Gdk.RGBA` boxed object and
   `v-model:date` a `GLib.DateTime`; a deep `ref()` proxies them. Use `shallowRef`/`useNative()`, as
   with `Gio.ListStore`.

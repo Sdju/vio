@@ -14,30 +14,30 @@ Everything here was exercised on **GTK 4.24.1** (`Gtk.getMajorVersion()` 4,
 
 ## Components
 
-| Component              | Native object                    | `v-model`              | Slots / children                   | Limitations                                                    |
-| ---------------------- | -------------------------------- | ---------------------- | ---------------------------------- | -------------------------------------------------------------- |
-| `VWindow`              | `Gtk.Window`                     | none                   | default content, `role="titlebar"` | `@destroy` is component lifetime, not a GTK signal             |
-| `VApplicationWindow`   | `Gtk.ApplicationWindow`          | none                   | default content, `role="titlebar"` | one shared `Gtk.Application` per application id                |
-| `VAssistant`           | `Gtk.Assistant`                  | `v-model:current-page` | children are `VAssistantPage`      | deprecated upstream since 4.10                                 |
-| `VAssistantPage`       | `Gtk.Box` page wrapper           | none                   | default page content               | one page per child, page metadata via props                    |
-| `VDialog`              | `Gtk.Dialog`                     | `v-model:visible`      | `#content` (default)               | action buttons only through the `buttons` prop                 |
-| `VMessageDialog`       | `Gtk.MessageDialog`              | none                   | none                               | stock button labels are English; deprecated upstream           |
-| `VFileChooserDialog`   | `Gtk.FileChooserDialog`          | none                   | none                               | `current-name` is applied only for `save`; deprecated upstream |
-| `VFileChooserNative`   | `Gtk.FileChooserNative`          | none                   | none (controller)                  | not a widget; `show()`/`hide()`/`native`                       |
-| `VColorChooserDialog`  | `Gtk.ColorChooserDialog`         | none                   | none                               | deprecated upstream; use `VColorDialog`                        |
-| `VFontChooserDialog`   | `Gtk.FontChooserDialog`          | none                   | none                               | deprecated upstream; use `VFontDialog`                         |
-| `VAppChooserDialog`    | `Gtk.AppChooserDialog`           | none                   | none (controller)                  | `content-type`/`gfile` are construct-only                      |
-| `VPrintUnixDialog`     | `Gtk.PrintUnixDialog`            | none                   | none                               | Unix printing API                                              |
-| `VPageSetupUnixDialog` | `Gtk.PageSetupUnixDialog`        | none                   | none                               | Unix printing API                                              |
-| `VAboutDialog`         | `Gtk.AboutDialog`                | none                   | none                               | `logo` is an icon name                                         |
-| `VAlertDialog`         | `Gtk.AlertDialog` (not a widget) | none                   | none (controller)                  | `choose(parent)` requires a live parent                        |
-| `VFileDialog`          | `Gtk.FileDialog` (not a widget)  | none                   | none (controller)                  | parent workaround below; requires a live parent                |
-| `VColorDialog`         | `Gtk.ColorDialog` (not a widget) | none                   | none (controller)                  | requires a live parent; resolves `Gdk.RGBA`                    |
-| `VFontDialog`          | `Gtk.FontDialog` (not a widget)  | none                   | none (controller)                  | requires a live parent; font readback may be empty (below)     |
-| `VShortcutsWindow`     | `Gtk.ShortcutsWindow`            | none                   | `VShortcutsSection` children       | sections are append-only                                       |
-| `VShortcutsSection`    | `Gtk.ShortcutsSection`           | none                   | `VShortcutsGroup` children         | groups are append-only                                         |
-| `VShortcutsGroup`      | `Gtk.ShortcutsGroup`             | none                   | `VShortcutsShortcut` children      | shortcuts are append-only                                      |
-| `VShortcutsShortcut`   | `Gtk.ShortcutsShortcut`          | none                   | none                               | one native shortcut row; no `Gtk.Shortcut` resource            |
+| Component              | Native object                    | `v-model`              | Slots / children                   | Limitations                                                      |
+| ---------------------- | -------------------------------- | ---------------------- | ---------------------------------- | ---------------------------------------------------------------- |
+| `VWindow`              | `Gtk.Window`                     | none                   | default content, `role="titlebar"` | `@destroy` is component lifetime, not a GTK signal               |
+| `VApplicationWindow`   | `Gtk.ApplicationWindow`          | none                   | default content, `role="titlebar"` | one shared `Gtk.Application` per application id                  |
+| `VAssistant`           | `Gtk.Assistant`                  | `v-model:current-page` | children are `VAssistantPage`      | deprecated upstream since 4.10                                   |
+| `VAssistantPage`       | `Gtk.Box` page wrapper           | none                   | default page content               | one page per child, page metadata via props                      |
+| `VDialog`              | `Gtk.Dialog`                     | `v-model:visible`      | `#content` (default)               | action buttons only through the `buttons` prop                   |
+| `VMessageDialog`       | `Gtk.MessageDialog`              | none                   | none                               | stock button labels are English; deprecated upstream             |
+| `VFileChooserDialog`   | `Gtk.FileChooserDialog`          | none                   | none                               | `current-name` is applied only for `save`; deprecated upstream   |
+| `VFileChooserNative`   | `Gtk.FileChooserNative`          | none                   | none (controller)                  | not a widget; `show()`/`hide()`/`native`                         |
+| `VColorChooserDialog`  | `Gtk.ColorChooserDialog`         | none                   | none                               | deprecated upstream; use `VColorDialog`                          |
+| `VFontChooserDialog`   | `Gtk.FontChooserDialog`          | none                   | none                               | deprecated upstream; use `VFontDialog`                           |
+| `VAppChooserDialog`    | `Gtk.AppChooserDialog`           | none                   | none (controller)                  | `content-type`/`gfile` are construct-only                        |
+| `VPrintUnixDialog`     | `Gtk.PrintUnixDialog`            | none                   | none                               | Unix printing API                                                |
+| `VPageSetupUnixDialog` | `Gtk.PageSetupUnixDialog`        | none                   | none                               | Unix printing API                                                |
+| `VAboutDialog`         | `Gtk.AboutDialog`                | none                   | none                               | `logo` is an icon name                                           |
+| `VAlertDialog`         | `Gtk.AlertDialog` (not a widget) | none                   | none (controller)                  | `choose(parent)` requires a live parent                          |
+| `VFileDialog`          | `Gtk.FileDialog` (not a widget)  | none                   | none (controller)                  | parent workaround below; requires a live parent                  |
+| `VColorDialog`         | `Gtk.ColorDialog` (not a widget) | none                   | none (controller)                  | requires a live parent; resolves `Gdk.RGBA`                      |
+| `VFontDialog`          | `Gtk.FontDialog` (not a widget)  | none                   | none (controller)                  | requires a live parent; `font-desc` preselects the accepted font |
+| `VShortcutsWindow`     | `Gtk.ShortcutsWindow`            | none                   | `VShortcutsSection` children       | sections append-only (`GtkStack`)                                |
+| `VShortcutsSection`    | `Gtk.ShortcutsSection`           | none                   | `VShortcutsGroup` children         | groups append-only (GTK column boxes)                            |
+| `VShortcutsGroup`      | `Gtk.ShortcutsGroup`             | none                   | `VShortcutsShortcut` children      | shortcuts are keyed-reorderable                                  |
+| `VShortcutsShortcut`   | `Gtk.ShortcutsShortcut`          | none                   | none                               | one native shortcut row; no `Gtk.Shortcut` resource              |
 
 `VDialog` also exports `DialogButton` and `ResponseId`; `VFileDialog` and
 `VFileChooserDialog`/`VFileChooserNative` accept `FileFilterInput` — either a real
@@ -206,6 +206,10 @@ async function ask() {
 | `VColorDialog` | `chooseRgba(parent, initial?)`   | `Gdk.RGBA` or `null`              |
 | `VFontDialog`  | `chooseFont(parent, initial?)`   | `Pango.FontDescription` or `null` |
 
+`VFontDialog` also accepts a `font-desc` prop (a `Pango.FontDescription` or a font-name string);
+`chooseFont(parent)` uses it when no explicit initial argument is passed. GTK needs a selection to
+enable Select, so this prop is the declarative way to open the chooser on a concrete font.
+
 Each controller also exposes `open()` aliases where sensible (`VColorDialog.open`,
 `VFontDialog.open`), `cancel()` and a `pending` flag.
 
@@ -225,8 +229,8 @@ Each controller also exposes `open()` aliases where sensible (`VColorDialog.open
   covered by a child-process test with immediate and delayed cancellation. Color, font and alert
   dialogs use the parent normally.
 - Success paths and the portal split are covered in [Async dialogs](#async-dialogs). In short:
-  alert and colour resolve in-process, font depends on GTK's font list, and a portal-backed file
-  dialog has no in-process widget to accept.
+  alert, colour and font resolve in-process (font needs an initial selection), and a portal-backed
+  file dialog has no in-process widget to accept.
 
 ## Deprecated upstream and replacements
 
@@ -263,7 +267,7 @@ public methods:
 | -------------------- | ----------------------- | --------------------------------------------------------------------------------------------- |
 | `VShortcutsWindow`   | `Gtk.ShortcutsWindow`   | `addSection()`, sections are `VShortcutsSection` children                                     |
 | `VShortcutsSection`  | `Gtk.ShortcutsSection`  | `addGroup()`, groups are `VShortcutsGroup` children                                           |
-| `VShortcutsGroup`    | `Gtk.ShortcutsGroup`    | `addShortcut()`, rows are `VShortcutsShortcut` children                                       |
+| `VShortcutsGroup`    | `Gtk.ShortcutsGroup`    | `addShortcut()` for new rows; `reorderChildAfter()`/`insertChildAfter()` for keyed moves      |
 | `VShortcutsShortcut` | `Gtk.ShortcutsShortcut` | leaf; `title`, `subtitle`, `accelerator`, `icon`, `action-name`, `direction`, `shortcut-type` |
 
 ```vue
@@ -277,10 +281,26 @@ public methods:
 </VShortcutsWindow>
 ```
 
-The components keep the element ref and `.widget`, like the other containers. All three `add*`
-methods append, so keyed reordering is not implemented: recreate the subtree or manipulate the raw
-`.widget` when a different order is required. `Gtk.Shortcut` is a non-widget `GObject` and stays an
-imperative resource for action accelerators; `VShortcutsShortcut` is the visual row only.
+The components keep the element ref and `.widget`, like the other containers. Placement is not
+uniform because GTK's containers differ:
+
+- **Shortcut rows are keyed-reorderable.** `GtkShortcutsGroup` is a `Gtk.Box`; its children are the
+  internal title label followed by the shortcut rows. `VShortcutsGroup` uses
+  `Gtk.Box.reorderChildAfter()` for a row already in the group and `Gtk.Box.insertChildAfter()` for a
+  new one, keeping the title label first. Only the moved row is touched: the test moves the first of
+  three shortcuts to the end and back and checks order, GObject identity and `notify::root === 0`.
+- **Sections are append-only.** `Gtk.ShortcutsWindow.addSection()` appends each section to an
+  internal `Gtk.Stack` (`GtkShortcutsWindow` → `GtkBox` → `GtkStack`). `Gtk.Stack` has no
+  `reorderChildAfter()`/`insertChildAfter()`, and the `.widget` of a section has no parent Box that
+  could move it. Recreate the window or use the raw `.widget` for a different section order.
+- **Groups are append-only.** `Gtk.ShortcutsSection.addGroup()` appends, but GTK reflows groups into
+  internal column `GtkBox`es to respect `max-height` (default 15). Three groups produce parents
+  holding 2 and 1 groups; `max-height` 1 gives each group its own parent. Since there is no single
+  Box whose child order is the group order, keyed reordering across columns is not available.
+  Reparenting a group between columns emits two `notify::root` notifications, so the wrapper does
+  not do it.
+- `Gtk.Shortcut` is a non-widget `GObject` and stays an imperative resource for action accelerators;
+  `VShortcutsShortcut` is the visual row only.
 
 ## Async dialogs
 
@@ -293,11 +313,15 @@ paths are testable without a portal:
   sliders log `GtkGizmo … reported min width -2`; the test installs
   `slider { min-width: 16px; min-height: 16px; }` through `installCss()`. The library does not
   install that rule globally. A second `chooseRgba()` still cancels to `null`.
-- **`VFontDialog`** presents `GtkFontChooserDialog`, but this host's GTK renders `No Fonts Found`
-  (2378 `fc-list` entries exist), `getFont()` stays `null`, and the Select button is insensitive.
-  The dialog therefore settles through cancellation (`null`) instead of rejecting, and the test
-  switches to a `Pango.FontDescription` assertion when GTK lists fonts. This is the same
-  `GtkFontChooserWidget` readback defect documented in [`small.md`](small.md).
+- **`VFontDialog`** presents `GtkFontChooserDialog` and resolves a real `Pango.FontDescription`.
+  The earlier `No Fonts Found` reading was a misdiagnosis: the chooser lists fonts, and the
+  `No Fonts Found` label is present in the widget tree but unmapped. `getFont()` is `null` and
+  Select is insensitive only while no font is selected. Pass an initial description to
+  `chooseFont(parent, initial)` or set the `font-desc` prop; the dialog then preselects it, enables
+  Select and resolves that description. The test accepts `Noto Sans 12`, asserts the returned
+  `Pango.FontDescription`, and separately checks that a second request still cancels to `null`.
+  `Gtk.FontChooser:font-map` readback is `NULL`; explicitly setting
+  `PangoCairo.fontMapGetDefault()` does not change the font list.
 
 **`VFileDialog` and the portal.** On this machine the portal is present:
 
@@ -329,7 +353,9 @@ itself.
 - A scripted success response from the desktop portal. `Gtk.FileDialog` delegates presentation to
   `org.freedesktop.impl.portal.desktop.*`; vio can only cancel the request.
 - `GtkBuildable` XML.
-- Keyed reordering of `Gtk.Shortcuts*` sections, groups or shortcuts: the public API is append-only.
+- Keyed reordering of `Gtk.Shortcuts*` sections or groups. Sections live in an internal `GtkStack`
+  and groups are reflowed into column boxes; only `VShortcutsGroup`'s shortcut rows are
+  keyed-reorderable through `Gtk.Box.reorderChildAfter()`.
 - Parent-dependent async calls without a live `Gtk.Window`.
 - Changing construct-only `Gtk.AppChooserDialog` properties after construction.
 - Observing a raw `Gtk.Widget.destroy` signal on GTK 4.24.

@@ -849,7 +849,7 @@ await test("VColorDialog accepts a colour and still cancels a second request", (
   assert.doesNotMatch(result.stderr, /Gtk-WARNING|Gtk-CRITICAL/);
 });
 
-await test("VFontDialog presents the native dialog and settles without a rejection", () => {
+await test("VFontDialog preselects a font and resolves a real Pango.FontDescription", () => {
   const source = `
     import Gtk from "gi:Gtk-4.0";
     import Pango from "gi:Pango-1.0";
@@ -867,7 +867,11 @@ await test("VFontDialog presents the native dialog and settles without a rejecti
     pump();
     let handle;
     const app = createApp({
-      setup: () => () => h(VFontDialog, { ref: (value) => (handle = value), title: "pick" }),
+      setup: () => () => h(VFontDialog, {
+        ref: (value) => (handle = value),
+        title: "pick",
+        fontDesc: Pango.FontDescription.fromString("Noto Sans 12"),
+      }),
     });
     app.mount();
     const pending = handle.chooseFont(parent);
@@ -876,24 +880,25 @@ await test("VFontDialog presents the native dialog and settles without a rejecti
     const dialog = Gtk.Window.listToplevels().find((window) => window instanceof Gtk.Dialog);
     if (!dialog) throw new Error("the font dialog did not present a Gtk.Dialog");
     const accept = dialog.getWidgetForResponse(Gtk.ResponseType.OK);
-    let outcome = "font-ok";
-    if (accept?.getSensitive()) {
-      accept.emit("clicked");
-      pump();
-      const result = await pending;
-      if (!(result instanceof Pango.FontDescription))
-        throw new Error("the accepted font is not a Pango.FontDescription");
-    } else {
-      // GTK 4.24.1 on this host lists no fonts ("No Fonts Found") and keeps Select
-      // insensitive. The dialog still appeared, and cancellation must resolve, not reject.
-      if (!handle.cancel()) throw new Error("cancel() returned false");
-      if (await pending !== null) throw new Error("cancellation did not resolve null");
-      outcome = "font-ok-no-fonts";
-    }
+    if (!accept?.getSensitive())
+      throw new Error("the preselect font did not enable the Select button");
+    accept.emit("clicked");
+    pump();
+    const result = await pending;
+    if (!(result instanceof Pango.FontDescription))
+      throw new Error("the accepted font is not a Pango.FontDescription");
+    if (result.toString() !== "Noto Sans 12")
+      throw new Error("the dialog resolved a different font: " + result.toString());
     if (handle.pending) throw new Error("pending was not cleared");
+    // A second request without a selection is still cancellable and resolves null, not rejects.
+    const second = handle.chooseFont(parent);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    pump();
+    if (!handle.cancel()) throw new Error("cancel() returned false");
+    if (await second !== null) throw new Error("cancellation did not resolve null");
     app.unmount();
     parent.destroy();
-    console.log(outcome);
+    console.log("font-ok " + result.toString());
   `;
   const result = spawnSync(
     process.execPath,
@@ -906,8 +911,9 @@ await test("VFontDialog presents the native dialog and settles without a rejecti
     },
   );
   assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout.trim(), /^font-ok(-no-fonts)?$/);
+  assert.equal(result.stdout.trim(), "font-ok Noto Sans 12");
   assert.doesNotMatch(result.stderr, /Gtk-WARNING|Gtk-CRITICAL/);
+  assert.doesNotMatch(result.stderr, /GLib-CRITICAL|GLib-GObject-CRITICAL|Gdk-CRITICAL/);
 });
 
 await test("VFileDialog keeps the realized-parent workaround and cancels safely", () => {
@@ -1034,6 +1040,119 @@ await test("VShortcutsWindow shows declarative sections, groups and shortcuts", 
     assert.ok(
       children(group.widget).some((widget) => widget === shortcut.widget),
       "a sibling shortcut stays attached",
+    );
+  } finally {
+    app.unmount();
+  }
+});
+
+await test("VShortcutsGroup reorders shortcuts in place; sections and groups stay append-only", async () => {
+  const items = ref(["a", "b", "c"]);
+  const sections = [];
+  const groups = [];
+  const shortcutRefs = new Map();
+  const shortcut = (key) =>
+    h(VShortcutsShortcut, {
+      key,
+      ref: (value) => shortcutRefs.set(key, value),
+      title: key.toUpperCase(),
+      accelerator: `<Control>${key}`,
+    });
+  const section = (index, title) =>
+    h(
+      VShortcutsSection,
+      {
+        ref: (value) => (sections[index] = value),
+        title,
+        sectionName: `s${index}`,
+      },
+      {
+        default: () =>
+          index === 0
+            ? [
+                h(
+                  VShortcutsGroup,
+                  { ref: (value) => (groups[0] = value), title: "G1" },
+                  { default: () => items.value.map(shortcut) },
+                ),
+                h(VShortcutsGroup, { ref: (value) => (groups[1] = value), title: "G2" }),
+                h(VShortcutsGroup, { ref: (value) => (groups[2] = value), title: "G3" }),
+              ]
+            : h(VShortcutsGroup, { title: `${title} group` }),
+      },
+    );
+  const app = mount(() =>
+    h(
+      VShortcutsWindow,
+      { visible: true, title: "Keys" },
+      { default: () => [section(0, "S1"), section(1, "S2"), section(2, "S3")] },
+    ),
+  );
+  try {
+    await settle();
+    const group = groups[0].widget;
+    if (!(group instanceof Gtk.ShortcutsGroup)) throw new Error("missing group");
+    const order = () =>
+      children(group)
+        .filter((widget) => widget instanceof Gtk.ShortcutsShortcut)
+        .map((widget) => widget.getProperty("title"));
+    assert.deepEqual(order(), ["A", "B", "C"]);
+    assert.ok(children(group)[0] instanceof Gtk.Label, "the group title label stays first");
+
+    const widgets = new Map(
+      [...shortcutRefs].map(([key, handle]) => [key.toUpperCase(), handle.widget]),
+    );
+    const rootNotifications = new Map();
+    for (const [key, widget] of widgets) {
+      rootNotifications.set(key, 0);
+      widget.on("notify::root", () => rootNotifications.set(key, rootNotifications.get(key) + 1));
+    }
+    let groupRootNotifications = 0;
+    group.on("notify::root", () => groupRootNotifications++);
+
+    items.value = ["b", "c", "a"];
+    await settle();
+    assert.deepEqual(order(), ["B", "C", "A"], "the first shortcut moved to the end");
+    assert.ok(children(group)[0] instanceof Gtk.Label, "the title label is still first");
+    for (const [key, widget] of widgets) {
+      assert.equal(widget.getParent(), group, `${key}: the shortcut stayed in the group`);
+      assert.equal(rootNotifications.get(key), 0, `${key}: the shortcut was not unparented`);
+    }
+    assert.equal(groupRootNotifications, 0, "the group was not unparented");
+
+    items.value = ["a", "b", "c"];
+    await settle();
+    assert.deepEqual(order(), ["A", "B", "C"], "the shortcut moved back to the front");
+    for (const [key, widget] of widgets) {
+      assert.equal(widget.getParent(), group, `${key}: identity survived the move back`);
+      assert.equal(rootNotifications.get(key), 0, `${key}: no unparent on the way back`);
+    }
+    assert.equal(groupRootNotifications, 0, "the group root stayed stable");
+
+    // GTK puts sections in an internal Gtk.Stack and distributes groups into column boxes.
+    // Neither container offers a keyed reorder, so only shortcut rows are keyed-movable.
+    const sectionParents = sections.map((handle) => handle.widget.getParent());
+    assert.ok(
+      sectionParents.every((parent) => parent instanceof Gtk.Stack),
+      "sections are appended to the window's Gtk.Stack",
+    );
+    assert.equal(
+      typeof sectionParents[0].reorderChildAfter,
+      "undefined",
+      "Gtk.Stack has no reorderChildAfter",
+    );
+    const stackSections = [];
+    for (let node = sectionParents[0].getFirstChild(); node; node = node.getNextSibling())
+      if (node instanceof Gtk.ShortcutsSection) stackSections.push(node.getProperty("title"));
+    assert.deepEqual(stackSections, ["S1", "S2", "S3"], "sections keep declaration order");
+    const groupParents = groups.map((handle) => handle.widget.getParent());
+    assert.ok(
+      groupParents.every((parent) => parent !== sections[0].widget && parent instanceof Gtk.Box),
+      "groups live in internal column boxes, not in the section itself",
+    );
+    assert.ok(
+      new Set(groupParents).size > 1,
+      "GTK distributes three groups over more than one column box",
     );
   } finally {
     app.unmount();

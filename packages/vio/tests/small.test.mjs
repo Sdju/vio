@@ -651,6 +651,50 @@ await test("VFontChooserWidget applies font props and emits font-activated", asy
   app.unmount();
 });
 
+await test("VFontChooserWidget returns an assigned font once it is rooted", () => {
+  const source = `
+    import Gtk from "gi:Gtk-4.0";
+    import GLib from "gi:GLib-2.0";
+    import { createApp, h, installCss, VFontChooserWidget, VWindow } from "@zede/vio";
+    Gtk.init();
+    installCss("slider { min-width: 16px; min-height: 16px; }");
+    const pump = (iterations = 300) => {
+      for (let index = 0; index < iterations; index++) GLib.MainContext.default().iteration(false);
+    };
+    let handle;
+    const app = createApp({
+      setup: () => () => h(VWindow, { visible: true, title: "font" }, {
+        default: () => h(VFontChooserWidget, { ref: (value) => (handle = value), font: "Noto Sans 12" }),
+      }),
+    });
+    app.mount();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    pump();
+    console.log(JSON.stringify({
+      font: handle.font,
+      desc: handle.widget.getFontDesc()?.toString?.() ?? null,
+    }));
+    app.unmount();
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "@zede/vio/register", "--input-type=module", "-e", source],
+    {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+      timeout: 20_000,
+      env: process.env,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout.trim()), {
+    font: "Noto Sans 12",
+    desc: "Noto Sans 12",
+  });
+  assert.doesNotMatch(result.stderr, /Gtk-WARNING|Gtk-CRITICAL|Pango-CRITICAL/);
+  assert.doesNotMatch(result.stderr, /GLib-CRITICAL|GLib-GObject-CRITICAL|Gdk-CRITICAL/);
+});
+
 await test("wave 5 components mount and unmount without GTK warnings", () => {
   const source = `
     import Gtk from "gi:Gtk-4.0";

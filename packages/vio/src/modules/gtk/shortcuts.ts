@@ -19,10 +19,53 @@ function isInside(
   return false;
 }
 
+function shortcutWidgets(parent: VioElement): Array<InstanceType<typeof Gtk.ShortcutsShortcut>> {
+  return parent.children
+    .map((node) => node.widget)
+    .filter(
+      (widget): widget is InstanceType<typeof Gtk.ShortcutsShortcut> =>
+        widget instanceof Gtk.ShortcutsShortcut,
+    );
+}
+
+/** Position among `GtkShortcutsShortcut` children, ignoring the group's internal title label. */
+function shortcutIndex(
+  group: InstanceType<typeof Gtk.ShortcutsGroup>,
+  child: InstanceType<typeof Gtk.ShortcutsShortcut>,
+): number {
+  let index = 0;
+  for (let node = group.getFirstChild(); node; node = node.getNextSibling()) {
+    if (!(node instanceof Gtk.ShortcutsShortcut)) continue;
+    if (node === child) return index;
+    index++;
+  }
+  return -1;
+}
+
+/**
+ * The last internal child before the first shortcut row. GTK places the group's title label there;
+ * a keyed move to position 0 must insert after it, not before it.
+ */
+function groupInternalTail(
+  group: InstanceType<typeof Gtk.ShortcutsGroup>,
+): InstanceType<typeof Gtk.Widget> | null {
+  let tail: InstanceType<typeof Gtk.Widget> | null = null;
+  for (let node = group.getFirstChild(); node; node = node.getNextSibling()) {
+    if (node instanceof Gtk.ShortcutsShortcut) break;
+    tail = node;
+  }
+  return tail;
+}
+
 /**
  * `Gtk.ShortcutsWindow.addSection()`, `Gtk.ShortcutsSection.addGroup()` and
  * `Gtk.ShortcutsGroup.addShortcut()` are public methods on public widget classes on GTK 4.24.
  * The `vio-*` types therefore own the placement instead of relying on the generic `single` mode.
+ *
+ * Shortcut rows are direct children of the `Gtk.ShortcutsGroup` box, so a keyed move is a plain
+ * `reorderChildAfter()` / `insertChildAfter()`. Sections live in an internal `Gtk.Stack` and groups
+ * are distributed by GTK into column boxes; neither exposes a keyed reorder primitive, so those two
+ * levels stay append-only.
  */
 define("vio-shortcuts-window", {
   create: () => new Gtk.ShortcutsWindow(),
@@ -59,13 +102,21 @@ define("vio-shortcuts-section", {
 define("vio-shortcuts-group", {
   create: () => new Gtk.ShortcutsGroup(),
   children: "none",
-  insertChild({ parentWidget, child }) {
+  insertChild({ parentWidget, child, parent }) {
     if (!(child instanceof Gtk.ShortcutsShortcut))
       throw new Error(`vio: VShortcutsGroup children must be VShortcutsShortcut`);
     const group = parentWidget as InstanceType<typeof Gtk.ShortcutsGroup>;
-    if (isInside(child, group)) return;
+    const desired = shortcutWidgets(parent);
+    if (!desired.includes(child)) desired.push(child);
+    const position = desired.indexOf(child);
+    if (shortcutIndex(group, child) === position) return;
+    const anchor = position > 0 ? desired[position - 1]! : groupInternalTail(group);
+    if (child.getParent() === group) {
+      group.reorderChildAfter(child, anchor);
+      return;
+    }
     if (child.getParent()) child.unparent();
-    group.addShortcut(child);
+    group.insertChildAfter(child, anchor);
   },
   removeChild({ parentWidget, child }) {
     if (isInside(child, parentWidget as InstanceType<typeof Gtk.Widget>)) child.unparent();

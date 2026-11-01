@@ -1246,7 +1246,7 @@ export const VFontChooserWidget = defineComponent({
       get widget() {
         return handle.widget;
       },
-      /** GTK 4.24 leaves this getter empty until the chooser activates a font. */
+      /** Empty until a font is selected or assigned; `setFont()` makes GTK return it. */
       get font() {
         return widget()?.getFont() ?? null;
       },
