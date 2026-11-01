@@ -205,8 +205,9 @@ These are real today and are not planned as renderer changes:
 - **`VEditableLabel` equality guard.** The component writes `text` only when it differs from
   `getText()`. An external `setText()` with the same value still emits `notify::text`; the handler
   compares before emitting `update:text`, so an equal prop update does not move the caret.
-- **`v-model` allowlist in SFC.** The compiler accepts `v-model` only for `VEntry` and the control
-  components in `docs/controls.md`. A third-party component that declares `modelValue` still needs
+- **`v-model` allowlist in SFC.** The compiler accepts `v-model` only for `VEntry` and the control,
+  data, dialog and wave-4 components listed in the compiler allowlist (`docs/controls.md`,
+  `docs/data.md`, `docs/media.md`). A third-party component that declares `modelValue` still needs
   an explicit compiler allowlist entry; use GTK properties and signals until then.
 - **`VComboBoxText` items are strings.** `items: string[]` appends each string as both id and label.
   Custom ids or non-string rows need `append(id, label)` on the exposed `.widget`.
@@ -221,8 +222,8 @@ These are real today and are not planned as renderer changes:
   guard the switcher with `v-if="stack?.widget"` when the stack is a sibling component.
 - **Adding a `ChildrenMode`** from user code (see above). Use placement hooks or a wrapper.
 - **`setProperty(name, null)`** for an object property that is not in the driver's setter table.
-  The table covers `model`, `factory`, `file`, `menu-model`, `application`, `settings`; other
-  object properties need their own setter in a `watch`.
+  The table covers `model`, `factory`, `file`, `menu-model`, `application`, `settings`, `paintable`,
+  `media-stream` and `dialog`; other object properties need their own setter in a `watch`.
 - **Symbol props** as GTK properties.
 - **Arbitrary `Teleport` selectors.** String targets resolve only through the named-root registry:
   `registerRoot("name", root)` plus `to="#name"`. CSS selectors and DOM lookup are not implemented.
@@ -284,8 +285,10 @@ rules and async cancellation contract are in [`dialogs.md`](dialogs.md). The non
   "allow the default close". The handler always returns a boolean, avoiding node-gtk's
   `Cannot convert value "undefined" to type gboolean` error.
 - **`VAssistant` current page.** `Gtk.Assistant:current-page` has no usable property notification
-  on 4.24; `v-model:current-page` is driven from `::prepare`. Removed pages leave GTK's internal
-  `GtkStack` parented until the subtree is collected, but disappear from `getNthPage()`.
+  on 4.24; `v-model:current-page` is driven from `::prepare`. `Gtk.Assistant::remove-page` leaves
+  the removed page parented to GTK's internal `GtkStack`; the `vio-assistant` placement hook calls
+  `unparent()` on the removed page so the subtree is released immediately (covered by a child-process
+  test that asserts no `Gtk-CRITICAL`).
 - **`VShortcutsWindow` is not wrapped.** The window is only a shell; its content is
   `ShortcutsSection`/`ShortcutsGroup` (internal display parts) and non-widget `Gtk.Shortcut`
   resources. Wrapping those would violate the wave 3 rule against wrapping internal parts, so the
@@ -298,6 +301,62 @@ rules and async cancellation contract are in [`dialogs.md`](dialogs.md). The non
   4.24 and are documented compatibility surfaces. GTK 4.24 has no `close-response` signal on
   `Gtk.MessageDialog`; `VMessageDialog` synthesizes `@close-response` from
   `response == CLOSE | DELETE_EVENT`.
+
+## Wave 4: media, canvas and value pickers
+
+The components live in `packages/vio/src/modules/gtk/media.ts`; the API table and the full probe log
+are in [`media.md`](media.md). The non-obvious limits:
+
+- **`Gtk.CustomSorter` does not reach JavaScript.** node-gtk 4.1.1 marshals the `gconstpointer`
+  arguments of `GtkCustomSorterFunc` as `undefined` (all three arguments, verified). `useSortListModel`
+  uses a JS `Gtk.Sorter` subclass (`virtual_compare`) and `Gtk.SortListModel` instead. The brief asked
+  for `Gtk.CustomSorter`; this is the only working equivalent on this binding, and the test asserts
+  the deviation explicitly.
+- **`Gtk.FilterListModel:autoexpand` does not exist on GTK 4.24.** `VFilterListModel` accepts the
+  prop for API symmetry but ignores it. It was a GTK 3 tree-filter concept.
+- **Media interface signals are bridged through notifications.** `Gtk.MediaStream::playing-changed`
+  and `::ended` are interface signals and `object.on("playing-changed")` fails with
+  `Signal name is invalid` in node-gtk 4.1.1. The components listen to `notify::playing`,
+  `notify::ended`, `notify::duration` and `notify::timestamp`; the public Vue events keep GTK names.
+- **Missing media files are never played.** `GtkMediaFile` on a nonexistent path logs
+  `Gtk-CRITICAL: gtk_gst_media_file_source_setup_cb: assertion 'stream != NULL' failed` when
+  `play()` is called. `VMediaFile`/`VVideo` check `Gio.File.queryExists()` first and expose an
+  empty state (`available = false`, `error`); the empty state is not an error dialog.
+- **GStreamer is optional and never initialized by the library.** With missing plugins the media
+  widgets mount, `Gtk.MediaFile` is created for an existing file, but playback may stay paused or
+  report an empty duration. Tests initialize `Gst` only in `media.test.mjs` and assert state rather
+  than audible playback. GStreamer's own warnings (`scaletempo`, missing `wavparse`) are not GTK
+  warnings; this environment has a partial plugin set.
+- **`Gtk.MediaControls` has no `playing` property.** `v-model:playing` is derived from and written
+  to the attached stream's `playing` property; the internal play/pause buttons do the same. With no
+  stream the model is inert.
+- **`VPicture` uses `Gdk.Texture.newFromFilename()`.** It needs a local path; `Gio.File` values are
+  reduced to `getPath()`. A URI or a file readable only by GIO returns an empty picture. The
+  component rejects `paintable` together with `file`/`filename` instead of guessing a precedence.
+- **cairo is supported, but only after allocation.** `gi:cairo` loads in node-gtk 4.1.1 and the draw
+  callback receives a camelCase `CairoContext` (`setSourceRgb`, `rectangle`, `fill`). GTK calls the
+  draw function only once the widget has a size; windows in this X session report `0x0` until the
+  main context has run with a delayed iteration, so the draw test presents in a child process. A JS
+  exception inside the C draw callback would abort the process, so `VDrawingArea` catches it and
+  emits `@error`.
+- **GL is desktop-only in the test.** On the current `:0` display `Gtk.GLArea` creates
+  `GdkX11GLContextEGL` and emits `render` once the window is allocated, but the suite tests only
+  properties, per the wave-4 rule. `@render` receives `null` when no context exists; the handle
+  exposes `context`, `api` and `error`.
+- **Native boxed values in models.** `v-model:rgba` emits a `Gdk.RGBA` boxed object and
+  `v-model:date` a `GLib.DateTime`; a deep `ref()` proxies them. Use `shallowRef`/`useNative()`, as
+  with `Gio.ListStore`.
+- **Synthesized picker signals.** `Gtk.ColorDialogButton` and `Gtk.FontDialogButton` have no
+  `color-set`/`font-set` signals on GTK 4.24. `@color-set`/`@font-set` are emitted from
+  `notify::rgba`/`notify::font-desc`, with consecutive duplicates filtered out. Native notification
+  caused by a programmatic `setRgba()` cannot be distinguished from a user choice; setting the prop
+  itself does not emit because the component compares with the current prop first.
+- **Calendar date shapes.** `date` accepts `GLib.DateTime`, `Date`, `YYYY-MM-DD` and
+  `{ year, month, day }` with a 1-based month. The exposed handle `month` is 1-based as well; the
+  raw `Gtk.Calendar.getMonth()` remains 0-based.
+- **`VColumnView` in `selection-mode="none"`.** Wave 4 fixed an older bug: applying a numeric
+  `selected` value to a `Gtk.NoSelection` called `setSelected()` on an object that has no such
+  method. No-selection views now ignore `selected`; the selection helpers expose `-1` for them.
 
 ## Imperative escape hatch
 

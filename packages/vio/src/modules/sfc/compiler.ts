@@ -28,6 +28,13 @@ const modelComponents = new Set([
   "VGridView",
   "VIconView",
   "VDialog",
+  "VMediaFile",
+  "VMediaControls",
+  "VColorButton",
+  "VFontButton",
+  "VColorDialogButton",
+  "VFontDialogButton",
+  "VCalendar",
 ]);
 
 /** `gtk-*` tags are native elements, not components that Vue must resolve. */

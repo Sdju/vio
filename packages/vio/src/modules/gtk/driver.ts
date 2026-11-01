@@ -243,6 +243,9 @@ const nullSetters: Record<string, string> = {
   "menu-model": "setMenuModel",
   application: "setApplication",
   settings: "setSettings",
+  paintable: "setPaintable",
+  "media-stream": "setMediaStream",
+  dialog: "setDialog",
 };
 const metadataProps = new Set(["role", "tab-label", "page", "slot-container"]);
 

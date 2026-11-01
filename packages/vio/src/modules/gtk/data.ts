@@ -203,6 +203,7 @@ function applyIndices(
   if (!selection) return;
   const indices =
     value === undefined ? [] : Array.isArray(value) ? value : value < 0 ? [] : [value];
+  if (mode === "none") return;
   if (mode === "multiple") {
     selection.unselectAll();
     for (const index of indices)

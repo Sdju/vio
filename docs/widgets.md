@@ -143,6 +143,36 @@ functional on 4.24 and point at `Gtk.AlertDialog`, `Gtk.FileDialog`, `Gtk.ColorD
 built from internal `ShortcutsSection`/`ShortcutsGroup` parts and non-widget `Gtk.Shortcut`
 resources.
 
+### Wave 4: media, canvas and value pickers
+
+Wave 4 adds no explicit `vio-*` child containers and no new `singleChildTypes` entries. Its
+components use the introspected classes directly; `getWidgetTypes()` keeps the wave 1–3 order and
+content.
+
+| Component            | Resolved type         | Role                                     |
+| -------------------- | --------------------- | ---------------------------------------- |
+| `VPicture`           | `picture`             | leaf, `none`                             |
+| `VVideo`             | `video`               | leaf, `none`                             |
+| `VMediaControls`     | `media-controls`      | leaf, `none` (internal buttons)          |
+| `VDrawingArea`       | `drawing-area`        | leaf, `none`                             |
+| `VGLArea`            | `gl-area`             | leaf, `none`                             |
+| `VColorButton`       | `color-button`        | leaf, `none`                             |
+| `VFontButton`        | `font-button`         | leaf, `none`                             |
+| `VColorDialogButton` | `color-dialog-button` | leaf, `none`                             |
+| `VFontDialogButton`  | `font-dialog-button`  | leaf, `none`                             |
+| `VCalendar`          | `calendar`            | leaf, `none`                             |
+| `VMediaFile`         | none                  | null-rendering `Gtk.MediaFile` resource  |
+| `VStringList`        | none                  | null-rendering `Gtk.StringList` resource |
+| `VFilterListModel`   | none                  | null-rendering filter model              |
+| `VSortListModel`     | none                  | null-rendering sort model                |
+
+`Gtk.Video`, `Gtk.MediaControls`, `Gtk.DrawingArea`, `Gtk.GLArea` and the pickers have no
+`setChild()` slot, so a widget child is still rejected with
+`vio: '<type>' cannot contain children`. None of them was added to the `single` allowlist. The
+list-model components are deliberately not elements: a resource has no widget and returns `null`
+from render, exactly like `VListModel`. Wave 4 details and deviations are in
+[`media.md`](media.md).
+
 `menu-button` and `expander` also have explicit registrations in `controls.ts` so `VMenuButton` can
 route `#popover` to `setPopover()` and `VExpander` can route `#label` to `setLabelWidget()`. Their
 generic `gtk-*` elements keep the same one-child behavior described here.

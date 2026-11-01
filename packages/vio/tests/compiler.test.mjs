@@ -88,6 +88,20 @@ await test("wave 3 VDialog accepts v-model:visible", () => {
   assert.match(code, /onUpdate:visible/);
 });
 
+await test("wave 4 media and value components accept v-model:argument", () => {
+  const code = compileSfc(
+    `<script setup lang="ts">
+    import { ref, VCalendar, VColorButton, VFontButton, VMediaControls } from "@zede/vio";
+    const date = ref(); const rgba = ref(); const font = ref("Sans 12"); const playing = ref(false);
+    </script><template><VCalendar v-model:date="date"/><VColorButton v-model:rgba="rgba"/><VFontButton v-model:font="font"/><VMediaControls v-model:playing="playing"/></template>`,
+    "media.vue",
+  );
+  assert.match(code, /onUpdate:date/);
+  assert.match(code, /onUpdate:rgba/);
+  assert.match(code, /onUpdate:font/);
+  assert.match(code, /onUpdate:playing/);
+});
+
 await test("unsupported DOM semantics fail with actionable diagnostics", () => {
   assert.throws(
     () => compileSfc('<template><gtk-label v-html="text"/></template>', "bad.vue"),

@@ -864,6 +864,10 @@ define("vio-assistant", {
     const assistant = parentWidget as InstanceType<typeof Gtk.Assistant>;
     const index = assistantPageIndex(assistant, child);
     if (index !== -1) assistant.removePage(index);
+    // Gtk.Assistant::remove-page drops the page from the page list but leaves it parented to the
+    // assistant's internal GtkStack. Unparenting releases the removed subtree; without it the
+    // page keeps a live parent and the stack keeps a reference after Vue dropped the VNode.
+    if (child.getParent()) child.unparent();
   },
 });
 

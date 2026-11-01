@@ -260,7 +260,50 @@ await test("VAssistant pages, page metadata, current-page model and signals", as
   await nextTick();
   assert.equal(assistant.getNPages(), 1, "the removed page leaves the assistant");
   assert.equal(assistant.getNthPage(1), null);
+  assert.equal(second.getParent(), null, "the removed page is unparented from the internal stack");
   app.unmount();
+});
+
+await test("VAssistant unparents a removed page without GTK warnings", () => {
+  const source = `
+    import Gtk from "gi:Gtk-4.0";
+    import {
+      VAssistant, VAssistantPage, VLabel, createApp, h, nextTick, ref,
+    } from "@zede/vio";
+    Gtk.init();
+    const showSecond = ref(true);
+    const app = createApp({
+      setup: () => () => h(VAssistant, null, {
+        default: () => [
+          h(VAssistantPage, { key: "first", title: "First" }, { default: () => h(VLabel, null, { default: () => "one" }) }),
+          showSecond.value
+            ? h(VAssistantPage, { key: "second", title: "Second" }, { default: () => h(VLabel, null, { default: () => "two" }) })
+            : null,
+        ],
+      }),
+    });
+    app.mount();
+    const assistant = app.root.children[0].widget;
+    const removed = assistant.getNthPage(1);
+    showSecond.value = false;
+    await nextTick();
+    const parent = removed.getParent();
+    console.log(JSON.stringify({ pages: assistant.getNPages(), parent: parent ? parent.constructor.name : null }));
+    app.unmount();
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "@zede/vio/register", "--input-type=module", "-e", source],
+    {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+      timeout: 20_000,
+      env: process.env,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout.trim()), { pages: 1, parent: null });
+  assert.doesNotMatch(result.stderr, /Gtk-WARNING|Gtk-CRITICAL/);
 });
 
 await test("VDialog puts #content in the content area and maps declarative buttons", async () => {
