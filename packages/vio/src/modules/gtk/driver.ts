@@ -29,6 +29,13 @@ export interface WidgetDefinition {
   /** Container-specific removal; must be safe to call more than once. */
   removeChild?: (placement: Placement) => void;
 }
+/**
+ * `KeepAlive` asks the renderer for a `div` storage container. A GTK tree has no DOM, so the
+ * renderer maps that one internal name to a detached `Gtk.Box`; applications do not need to
+ * register a dummy widget themselves.
+ */
+const storageDefinition: WidgetDefinition = { create: () => new Gtk.Box(), children: "box" };
+
 const definitions = new Map<string, WidgetDefinition>([
   [
     "window",
@@ -71,6 +78,8 @@ const definitions = new Map<string, WidgetDefinition>([
   ["check-button", { create: () => new Gtk.CheckButton(), children: "single" }],
   ["key-controller", { create: () => new Gtk.EventControllerKey(), controller: true }],
 ]);
+const lookup = (type: string): WidgetDefinition | undefined =>
+  definitions.get(type) ?? (type === "div" ? storageDefinition : undefined);
 
 /** Extend vio with an introspected GTK/Adwaita class without changing its reconciler. */
 export function registerWidget(type: string, definition: WidgetDefinition) {
@@ -91,6 +100,11 @@ export function hasWidget(type: string): boolean {
 /** The stored definition, or `undefined`; useful for idempotent wrapper libraries. */
 export function getWidgetDefinition(type: string): WidgetDefinition | undefined {
   return definitions.get(type);
+}
+
+/** Registered widget type names, in registration order. Diagnostic helper. */
+export function getWidgetTypes(): string[] {
+  return [...definitions.keys()];
 }
 
 export function installCss(css: string): () => void {
@@ -152,7 +166,7 @@ const rootTypes: Array<[Function, string]> = [
   [Gtk.Fixed, "vio-fixed"],
 ];
 const definitionOf = (node: VioElement): WidgetDefinition | undefined => {
-  if (node.kind !== "root") return definitions.get(node.type);
+  if (node.kind !== "root") return lookup(node.type);
   if (node.mode) {
     const named = definitions.get(node.mode);
     if (named) return named;
@@ -164,7 +178,7 @@ const definitionOf = (node: VioElement): WidgetDefinition | undefined => {
   return undefined;
 };
 const childMode = (node: VioElement): ChildrenMode => {
-  if (node.kind !== "root") return definitions.get(node.type)?.children ?? "none";
+  if (node.kind !== "root") return lookup(node.type)?.children ?? "none";
   if (node.mode) {
     const definition = definitions.get(node.mode);
     if (definition) return definition.children ?? "none";
@@ -176,8 +190,8 @@ const childMode = (node: VioElement): ChildrenMode => {
   return node.widget ? "single" : "none";
 };
 const concreteChildren = (node: VioElement) =>
-  node.children.filter((child) => child.widget && !definitions.get(child.type)?.controller);
-const isController = (node: VioNode) => Boolean(definitions.get(node.type)?.controller);
+  node.children.filter((child) => child.widget && !lookup(child.type)?.controller);
+const isController = (node: VioNode) => Boolean(lookup(node.type)?.controller);
 const applySelection = (parent: VioElement) => {
   if (parent.widget instanceof Gtk.ListBox && parent.props.selected !== undefined) {
     parent.widget.selectRow(parent.widget.getRowAtIndex(Number(parent.props.selected)));
@@ -243,12 +257,12 @@ const nullSetters: Record<string, string> = {
   application: "setApplication",
   settings: "setSettings",
 };
-const metadataProps = new Set(["role", "tab-label", "page"]);
+const metadataProps = new Set(["role", "tab-label", "page", "slot-container"]);
 
 export const gtkDriver: VioDriver = {
   isAnchor: (node) => !isController(node),
   create(type) {
-    const definition = definitions.get(type);
+    const definition = lookup(type);
     if (!definition)
       throw new Error(
         `vio: unknown widget '${type}'; use a V* component, gtk-* element or registerWidget()`,
@@ -461,6 +475,11 @@ export const gtkDriver: VioDriver = {
   dispose(node) {
     states.get(node)?.removeStyle?.();
     states.delete(node);
-    if (node.widget instanceof Gtk.Window) node.widget.destroy();
+    if (node.widget instanceof Gtk.Window) {
+      const window = node.widget;
+      if (window.getChild()) window.setChild(null);
+      if (window.getTitlebar()) window.setTitlebar(null);
+      window.destroy();
+    }
   },
 };

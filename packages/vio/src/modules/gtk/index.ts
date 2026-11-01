@@ -6,6 +6,7 @@ export {
   registerWidget,
   hasWidget,
   getWidgetDefinition,
+  getWidgetTypes,
   type WidgetDefinition,
   type ChildrenMode,
   type Placement,

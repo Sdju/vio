@@ -11,9 +11,9 @@ container element; placement of slot content is described by `WidgetDefinition.i
 | `VNotebook`     | `Gtk.Notebook`  | `VNotebookPage` children, tab order follows the Vue order                    |
 | `VNotebookPage` | page `Gtk.Box`  | `label` prop or `#tab-label` slot                                            |
 | `VPaned`        | `Gtk.Paned`     | `#start`, `#end` (default slot fills `#start`)                               |
-| `VOverlay`      | `Gtk.Overlay`   | default slot is the main child, `#overlay` is an overlay layer               |
+| `VOverlay`      | `Gtk.Overlay`   | default slot is the main child, each `#overlay` child is its own layer       |
 | `VCenterBox`    | `Gtk.CenterBox` | `#start`, `#center`, `#end` (default fills `#center`)                        |
-| `VHeaderBar`    | `Gtk.HeaderBar` | `#start`, `#end`, `#title` (default fills `#start`)                          |
+| `VHeaderBar`    | `Gtk.HeaderBar` | `#start`, `#end`, `#title` (default fills `#start`); slots keep VNode order  |
 | `VFlowBox`      | `Gtk.FlowBox`   | default slot, keyed children may be reordered                                |
 | `VFixed`        | `Gtk.Fixed`     | default slot, child `x` / `y` props describe the position                    |
 | `VListView`     | `Gtk.ListView`  | `model` / `factory` props, no widget children                                |
@@ -53,8 +53,9 @@ component teleports it into a detached root and calls `Notebook.setTabLabel()`.
 `VFixed` reads `x` / `y` from the child element's props. Changing them re-runs placement through
 `Fixed.move()`.
 
-`VFlowBox` reorders keyed children with remove + insert. The content widget identity is preserved;
-the internal `GtkFlowBoxChild` wrapper is recreated, so wrapper-level CSS does not survive a move.
+`VFlowBox` reorders keyed children by removing the content widget and re-inserting its existing
+`GtkFlowBoxChild` wrapper. Both the content widget and the wrapper keep their identity and CSS; a
+real removal releases the content from the detached wrapper.
 
 ## Placement hooks
 
@@ -96,7 +97,28 @@ Rules the driver guarantees:
 - `insertChild` / `removeChild` must be functions; unknown `children` strings are rejected.
 
 `hasWidget(type)` and `getWidgetDefinition(type)` make wrapper libraries idempotent:
-`registerWidget()` is global and throws on duplicates.
+`registerWidget()` is global and throws on duplicates. `getWidgetTypes()` returns the registered type
+names, which is useful in diagnostics and error messages.
+
+## Slot order, multiple overlays and removal
+
+The declarative components give every top-level slot item a small role wrapper, so placement hooks
+can see one widget per item:
+
+- `VOverlay` accepts any number of `#overlay` children. Each child is added with a separate
+  `Gtk.Overlay.addOverlay()` layer; array order is child order, and later VNodes are on top.
+- `VHeaderBar` keeps `#start` and `#end` in VNode order. `Gtk.HeaderBar` has no insert-at-index API,
+  so a move repacks only that role group with `packStart` / `packEnd`. The widgets are not
+  recreated; `#end` is packed in reverse because GTK prepends there.
+- `VPaned`, `VCenterBox` and `VNotebookPage` keep their single role wrapper. Removing a slot
+  detaches it and releases its content.
+- `VFlowBox` preserves the existing `GtkFlowBoxChild` on a move as described above.
+- `VFixed` keeps child identity and updates positions from `x` / `y`; its GTK child list is not a
+  visual ordering mechanism.
+
+Removal is idempotent for every container. Synthetic wrappers are marked internally and release
+their content when the wrapper leaves the container, so a keyed removal does not leave user widgets
+parented to a detached box. A full unmount detaches window content and titlebar before destruction.
 
 ## Root modes
 
@@ -111,6 +133,25 @@ const box = createRoot(new Gtk.Box(), "box");
 Without an explicit mode the driver maps known GTK classes (`Box`, `ListBox`, `Grid`, `Stack`,
 `Notebook`, `Paned`, `Overlay`, `CenterBox`, `HeaderBar`, `FlowBox`, `Fixed`) to their registered
 definitions. Unknown classes keep the legacy `single` inference.
+
+## Named roots, Teleport and KeepAlive
+
+`Teleport` accepts a registered root name:
+
+```ts
+const target = createRoot(new Gtk.Box());
+const unregister = registerRoot("sidebar", target);
+
+h(Teleport, { to: "#sidebar" }, () => h(VLabel, null, { default: () => "teleported" }));
+```
+
+Only simple `#name` targets are resolved; `getRoot(name)`, `getRootNames()` and
+`unregisterRoot(name)` complete the registry. The target widget must exist before the teleport is
+mounted, as with any renderer.
+
+`KeepAlive` needs a storage container. vio provides an internal `div` fallback backed by a detached
+`Gtk.Box`, so no user registration is required. `hasWidget("div")` remains `false`; an explicit
+`registerWidget("div", …)` still overrides the fallback.
 
 ## Native values
 
@@ -149,5 +190,20 @@ add/remove/reorder and unmount are deterministic.
 
 ```bash
 vp run --filter @zede/vio demo            # counter
-vp run --filter @zede/vio demo:showcase   # Notebook, Paned, Overlay, ListView + model/factory
+vp run --filter @zede/vio demo:showcase   # Notebook, Paned, ordered overlays, reorderable HeaderBar, ListView
 ```
+
+## Running the tests
+
+`vp run` may pick the Node.js 26 runtime bundled with Vite+, while the local `node-gtk` build uses
+the Node.js 24 ABI. Without pinning Node 24, `node-gtk generate-types` fails with
+`MODULE_NOT_FOUND: Cannot find module '…/node_gtk.node'`; that is an environment mismatch, not a
+regression in a source change. Pin the Node 24 binary on `PATH` for local checks:
+
+```bash
+PATH=/home/zede/.vite-plus/js_runtime/node/24.21.0/bin:$PATH vp run check
+PATH=/home/zede/.vite-plus/js_runtime/node/24.21.0/bin:$PATH vp run test:gtk
+```
+
+Without an interactive display, prefix the GTK command with `dbus-run-session -- xvfb-run -a`. The
+path above is an example for this machine; scripts do not hardcode it.

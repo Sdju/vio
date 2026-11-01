@@ -4,18 +4,26 @@ import Gtk from "gi:Gtk-4.0";
 import Gio from "gi:Gio-2.0";
 import { getGType } from "node-gtk";
 import {
+  KeepAlive,
+  Teleport,
   createApp,
   createRoot,
+  defineComponent,
+  getRootNames,
   getWidgetDefinition,
+  getWidgetTypes,
   hasWidget,
   h,
   nextTick,
   ref,
+  registerRoot,
   registerWidget,
   shallowRef,
+  unregisterRoot,
   useDetachedSlot,
   useNative,
   VBox,
+  VButton,
   VCenterBox,
   VFixed,
   VFlowBox,
@@ -38,11 +46,20 @@ const children = (widget) => {
     result.push(child);
   return result;
 };
-const flowChildren = (flow) => {
+const flowWrappers = (flow) => {
   const result = [];
   for (let index = 0; flow.getChildAtIndex(index); index++)
-    result.push(flow.getChildAtIndex(index).getChild());
+    result.push(flow.getChildAtIndex(index));
   return result;
+};
+const flowChildren = (flow) => flowWrappers(flow).map((wrapper) => wrapper.getChild());
+const headerSections = (bar) => {
+  const center = bar.getFirstChild()?.getChild();
+  return {
+    start: center?.getStartWidget(),
+    center: center?.getCenterWidget(),
+    end: center?.getEndWidget(),
+  };
 };
 const labelsIn = (widget) => {
   const result = [];
@@ -182,26 +199,53 @@ await test("VPaned: both slots, and removing one slot clears it", async () => {
   }
 });
 
-await test("VOverlay: main child plus an overlay layer", async () => {
-  const showOverlay = ref(true);
+await test("VOverlay: multiple ordered overlay layers survive moves and removals", async () => {
+  const overlayItems = ref(["o1", "o2"]);
   const app = mount(() =>
     h(VWindow, null, {
       default: () =>
         h(VOverlay, null, {
           default: () => h(VLabel, null, { default: () => "main" }),
-          overlay: showOverlay.value ? () => h(VLabel, null, { default: () => "over" }) : undefined,
+          overlay: () =>
+            overlayItems.value.map((key) => h(VLabel, { key }, { default: () => key })),
         }),
     }),
   );
   try {
     const overlay = windowOf(app).getChild();
+    const layerLabels = () =>
+      children(overlay)
+        .slice(1)
+        .map((layer) => labelsIn(layer));
+    const layerWidgets = () =>
+      children(overlay)
+        .slice(1)
+        .map((layer) => layer.getFirstChild());
     assert.deepEqual(labelsIn(overlay.getChild()), ["main"]);
-    assert.equal(children(overlay).length, 2, "main child plus one overlay");
-    assert.deepEqual(labelsIn(children(overlay)[1]), ["over"]);
-    showOverlay.value = false;
+    assert.deepEqual(layerLabels(), [["o1"], ["o2"]], "each overlay child is its own layer");
+    const [o1, o2] = layerWidgets();
+
+    overlayItems.value = ["o2", "o1"];
+    await nextTick();
+    assert.deepEqual(layerLabels(), [["o2"], ["o1"]], "layer order follows the VNode order");
+    assert.equal(layerWidgets()[1], o1, "move keeps the overlay widget");
+    assert.equal(layerWidgets()[0], o2);
+
+    overlayItems.value = ["o1"];
+    await nextTick();
+    assert.deepEqual(layerLabels(), [["o1"]], "removing the first layer preserves z-order");
+    assert.deepEqual(labelsIn(overlay.getChild()), ["main"], "getChild() is still the main child");
+    assert.equal(o2.getParent(), null, "the removed overlay widget is detached");
+
+    overlayItems.value = ["o3", "o1"];
+    await nextTick();
+    assert.deepEqual(layerLabels(), [["o3"], ["o1"]], "a new first layer goes below the old one");
+    assert.equal(layerWidgets()[1], o1);
+
+    overlayItems.value = [];
     await nextTick();
     assert.equal(children(overlay).length, 1);
-    assert.deepEqual(labelsIn(overlay.getChild()), ["main"]);
+    assert.equal(o1.getParent(), null);
   } finally {
     app.unmount();
   }
@@ -270,7 +314,66 @@ await test("VHeaderBar: start/end/title slots and window titlebar role", async (
   }
 });
 
-await test("VFlowBox: keyed reorder keeps content widgets; removal detaches them", async () => {
+await test("VHeaderBar: keyed move in #start/#end follows the VNode order and keeps identity", async () => {
+  const startItems = ref(["a", "b", "c"]);
+  const endItems = ref(["x", "y"]);
+  const headerButtons = (bar, section) =>
+    children(headerSections(bar)[section])
+      .filter((widget) => widget instanceof Gtk.Box && labelsIn(widget).length > 0)
+      .map((wrapper) => wrapper.getFirstChild());
+  const app = mount(() =>
+    h(VWindow, null, {
+      default: () =>
+        h(
+          VHeaderBar,
+          { role: "titlebar" },
+          {
+            start: () =>
+              startItems.value.map((key) =>
+                h(VButton, { key }, { default: () => key.toUpperCase() }),
+              ),
+            title: () => h(VLabel, null, { default: () => "title" }),
+            end: () =>
+              endItems.value.map((key) =>
+                h(VButton, { key }, { default: () => key.toUpperCase() }),
+              ),
+          },
+        ),
+    }),
+  );
+  try {
+    const bar = windowOf(app).getTitlebar();
+    const startLabels = () => labelsIn(headerSections(bar).start);
+    const endLabels = () => labelsIn(headerSections(bar).end);
+    const buttons = new Map();
+    const wrappers = new Map();
+    for (const button of [...headerButtons(bar, "start"), ...headerButtons(bar, "end")]) {
+      const key = labelsIn(button)[0].toLowerCase();
+      buttons.set(key, button);
+      wrappers.set(key, button.getParent());
+    }
+    assert.deepEqual(startLabels(), ["A", "B", "C"]);
+    assert.deepEqual(endLabels(), ["X", "Y"]);
+
+    startItems.value = ["c", "a", "b"];
+    endItems.value = ["y", "x"];
+    await nextTick();
+    assert.deepEqual(startLabels(), ["C", "A", "B"], "#start is packed in VNode order");
+    assert.deepEqual(endLabels(), ["Y", "X"], "#end is packed in VNode order (not reversed)");
+    for (const key of ["a", "b", "c", "x", "y"]) {
+      assert.equal(buttons.get(key).getParent(), wrappers.get(key), `wrapper for ${key} survived`);
+    }
+
+    startItems.value = ["b", "c"];
+    await nextTick();
+    assert.deepEqual(startLabels(), ["B", "C"]);
+    assert.equal(buttons.get("a").getParent(), null, "the removed button is detached");
+  } finally {
+    app.unmount();
+  }
+});
+
+await test("VFlowBox: keyed reorder keeps content widgets and FlowBoxChild wrappers", async () => {
   const items = ref(["a", "b", "c"]);
   const app = mount(() =>
     h(VWindow, null, {
@@ -287,6 +390,13 @@ await test("VFlowBox: keyed reorder keeps content widgets; removal detaches them
       ["a", "b", "c"],
     );
     const before = new Map(flowChildren(flow).map((widget) => [widget.getLabel(), widget]));
+    const wrappersBefore = new Map(
+      flowWrappers(flow).map((wrapper) => [wrapper.getChild().getLabel(), wrapper]),
+    );
+    for (const [label, wrapper] of wrappersBefore) {
+      wrapper.addCssClass(`wrap-${label}`);
+      wrapper.getChild().addCssClass(`content-${label}`);
+    }
 
     items.value = ["c", "a", "d"];
     await nextTick();
@@ -297,6 +407,14 @@ await test("VFlowBox: keyed reorder keeps content widgets; removal detaches them
     assert.equal(flowChildren(flow)[1], before.get("a"));
     assert.equal(flowChildren(flow)[0], before.get("c"));
     assert.equal(flowChildren(flow)[0].getParent()?.getParent(), flow);
+    assert.equal(flowWrappers(flow)[1], wrappersBefore.get("a"), "FlowBoxChild identity survives");
+    assert.equal(flowWrappers(flow)[0], wrappersBefore.get("c"));
+    assert.ok(flowWrappers(flow)[1].getCssClasses().includes("wrap-a"), "wrapper classes survive");
+    assert.ok(
+      flowChildren(flow)[1].getCssClasses().includes("content-a"),
+      "content classes survive",
+    );
+    assert.ok(flowWrappers(flow)[0].getCssClasses().includes("wrap-c"));
 
     items.value = ["a"];
     await nextTick();
@@ -305,6 +423,7 @@ await test("VFlowBox: keyed reorder keeps content widgets; removal detaches them
       ["a"],
     );
     assert.equal(before.get("c").getParent(), null);
+    assert.equal(wrappersBefore.get("c").getParent(), null);
   } finally {
     app.unmount();
   }
@@ -486,6 +605,157 @@ await test("createRoot resolves a mode for Notebook, Paned and FlowBox widgets",
   flowApp.unmount();
 });
 
+const lifecycleScenarios = [
+  {
+    name: "Notebook",
+    container: (app) => windowOf(app).getChild(),
+    render: (items) =>
+      h(VNotebook, null, {
+        default: () =>
+          items.value.map((key) =>
+            h(
+              VNotebookPage,
+              { key, label: key },
+              {
+                default: () => h(VLabel, { key: `label-${key}` }, { default: () => key }),
+              },
+            ),
+          ),
+      }),
+    widgets: (notebook) => [...pageMap(notebook).values()].map((page) => page.getFirstChild()),
+  },
+  {
+    name: "Paned",
+    container: (app) => windowOf(app).getChild(),
+    render: (items) =>
+      h(VPaned, null, {
+        start: () => items.value.map((key) => h(VLabel, { key }, { default: () => key })),
+        end: () => h(VLabel, null, { default: () => "end" }),
+      }),
+    widgets: (paned) => children(paned.getStartChild()),
+  },
+  {
+    name: "Overlay",
+    container: (app) => windowOf(app).getChild(),
+    render: (items) =>
+      h(VOverlay, null, {
+        default: () => h(VLabel, null, { default: () => "main" }),
+        overlay: () => items.value.map((key) => h(VLabel, { key }, { default: () => key })),
+      }),
+    widgets: (overlay) =>
+      children(overlay)
+        .slice(1)
+        .map((layer) => layer.getFirstChild()),
+  },
+  {
+    name: "CenterBox",
+    container: (app) => windowOf(app).getChild(),
+    render: (items) =>
+      h(VCenterBox, null, {
+        start: () => items.value.map((key) => h(VLabel, { key }, { default: () => key })),
+        center: () => h(VLabel, null, { default: () => "center" }),
+        end: () => h(VLabel, null, { default: () => "end" }),
+      }),
+    widgets: (box) => children(box.getStartWidget()),
+  },
+  {
+    name: "HeaderBar",
+    container: (app) => windowOf(app).getTitlebar(),
+    render: (items) =>
+      h(
+        VHeaderBar,
+        { role: "titlebar" },
+        {
+          start: () => items.value.map((key) => h(VLabel, { key }, { default: () => key })),
+          title: () => h(VLabel, null, { default: () => "title" }),
+        },
+      ),
+    widgets: (bar) =>
+      children(headerSections(bar).start)
+        .filter(
+          (widget) => widget instanceof Gtk.Box && widget.getFirstChild()?.getLabel?.() != null,
+        )
+        .map((wrapper) => wrapper.getFirstChild()),
+  },
+  {
+    name: "FlowBox",
+    container: (app) => windowOf(app).getChild(),
+    render: (items) =>
+      h(VFlowBox, null, {
+        default: () => items.value.map((key) => h(VLabel, { key }, { default: () => key })),
+      }),
+    widgets: (flow) => flowChildren(flow),
+  },
+  {
+    name: "Fixed",
+    container: (app) => windowOf(app).getChild(),
+    render: (items) =>
+      h(VFixed, null, {
+        default: () =>
+          items.value.map((key, index) =>
+            h(VLabel, { key, x: index * 10, y: 0 }, { default: () => key }),
+          ),
+      }),
+    prepare: (fixed) => fixed.allocate(200, 200, -1, null),
+    widgets: (fixed) =>
+      children(fixed).sort((a, b) => fixed.getChildPosition(a)[0] - fixed.getChildPosition(b)[0]),
+  },
+];
+
+await test("keyed slot move/remove/unmount detaches widgets in all role containers", async () => {
+  for (const scenario of lifecycleScenarios) {
+    const items = ref(["a", "b", "c"]);
+    const app = mount(() => h(VWindow, null, { default: () => scenario.render(items) }));
+    let container;
+    try {
+      container = scenario.container(app);
+      scenario.prepare?.(container);
+      const initial = scenario.widgets(container);
+      assert.deepEqual(
+        initial.map((widget) => widget.getLabel()),
+        ["a", "b", "c"],
+        `${scenario.name}: initial`,
+      );
+      const identity = new Map(initial.map((widget) => [widget.getLabel(), widget]));
+
+      items.value = ["c", "a", "b"];
+      await nextTick();
+      scenario.prepare?.(container);
+      const moved = scenario.widgets(container);
+      assert.deepEqual(
+        moved.map((widget) => widget.getLabel()),
+        ["c", "a", "b"],
+        `${scenario.name}: move order`,
+      );
+      for (const widget of moved)
+        assert.equal(
+          widget,
+          identity.get(widget.getLabel()),
+          `${scenario.name}: move keeps identity`,
+        );
+
+      items.value = ["a", "b"];
+      await nextTick();
+      scenario.prepare?.(container);
+      const remaining = scenario.widgets(container);
+      assert.deepEqual(
+        remaining.map((widget) => widget.getLabel()),
+        ["a", "b"],
+        `${scenario.name}: removal order`,
+      );
+      assert.equal(
+        identity.get("c").getParent(),
+        null,
+        `${scenario.name}: removed widget detached`,
+      );
+    } finally {
+      app.unmount();
+    }
+    assert.equal(app.root.children.length, 0, `${scenario.name}: root is empty`);
+    assert.equal(container.getParent(), null, `${scenario.name}: container is detached`);
+  }
+});
+
 await test("invalid children modes and duplicate registrations are rejected", () => {
   assert.throws(
     () => registerWidget("test-invalid-mode", { create: () => new Gtk.Box(), children: "roles" }),
@@ -497,6 +767,83 @@ await test("invalid children modes and duplicate registrations are rejected", ()
     () => registerWidget("test-invalid-mode", { create: () => new Gtk.Box(), children: "none" }),
     /already registered/,
   );
+});
+
+await test("string Teleport targets resolve through the named-root registry", async () => {
+  const target = createRoot(new Gtk.Box());
+  const cleanup = registerRoot("vio-teleport-target", target);
+  assert.ok(getRootNames().includes("vio-teleport-target"));
+  const app = mount(() =>
+    h(VWindow, null, {
+      default: () =>
+        h(VBox, null, {
+          default: () =>
+            h(Teleport, { to: "#vio-teleport-target" }, [
+              h(VLabel, { key: "teleport" }, { default: () => "teleported" }),
+            ]),
+        }),
+    }),
+  );
+  try {
+    assert.deepEqual(labelsIn(target.widget), ["teleported"]);
+  } finally {
+    app.unmount();
+    cleanup();
+  }
+  assert.equal(target.children.length, 0, "Teleport anchors are removed on unmount");
+  assert.equal(unregisterRoot("vio-teleport-target"), false);
+  assert.equal(getRootNames().includes("vio-teleport-target"), false);
+});
+
+await test("KeepAlive uses the built-in storage container instead of a user 'div' widget", async () => {
+  const show = ref(true);
+  const keep = (label) =>
+    defineComponent({
+      name: `Kept${label}`,
+      setup: () => () => h(VLabel, null, { default: () => label }),
+    });
+  const A = keep("A");
+  const B = keep("B");
+  const app = mount(() =>
+    h(VWindow, null, {
+      default: () =>
+        h(KeepAlive, null, {
+          default: () => (show.value ? h(A, { key: "a" }) : h(B, { key: "b" })),
+        }),
+    }),
+  );
+  try {
+    const window = windowOf(app);
+    const a = window.getChild();
+    assert.equal(a.getLabel(), "A");
+    show.value = false;
+    await nextTick();
+    assert.equal(window.getChild().getLabel(), "B");
+    assert.ok(a.getParent(), "the cached widget is kept in the storage container");
+    assert.notEqual(a.getParent(), window, "the cached widget left the window");
+    show.value = true;
+    await nextTick();
+    assert.equal(window.getChild(), a, "reactivation reuses the cached widget");
+  } finally {
+    app.unmount();
+  }
+});
+
+await test("getWidgetTypes lists registered types for diagnostics", () => {
+  const types = getWidgetTypes();
+  for (const type of [
+    "window",
+    "box",
+    "vio-notebook",
+    "vio-paned",
+    "vio-overlay",
+    "vio-center-box",
+    "vio-header-bar",
+    "vio-flow-box",
+    "vio-fixed",
+  ])
+    assert.ok(types.includes(type), `${type} is listed`);
+  assert.equal(hasWidget("div"), false, "KeepAlive storage is internal, not a public registration");
 });
 
 await test("object properties: shallowRef updates and dedicated null setters", async () => {

@@ -64,6 +64,41 @@ export const createRoot = (widget: object | null = null, mode?: string): VioElem
 export const toKebab = (value: string) =>
   value.replace(/[A-Z]/g, (letter, index) => `${index ? "-" : ""}${letter.toLowerCase()}`);
 
+const namedRoots = new Map<string, VioElement>();
+const normalizeRootName = (name: string) => (name.startsWith("#") ? name.slice(1) : name);
+
+/**
+ * Name a root so a string Teleport target can find it: `registerRoot("sidebar", root)` enables
+ * `<Teleport to="#sidebar">`. Returns an idempotent cleanup function.
+ */
+export function registerRoot(name: string, root: VioElement): () => void {
+  const key = normalizeRootName(name);
+  if (!key) throw new Error("vio: root name must not be empty");
+  const existing = namedRoots.get(key);
+  if (existing && existing !== root) throw new Error(`vio: root '${key}' is already registered`);
+  namedRoots.set(key, root);
+  return () => {
+    if (namedRoots.get(key) === root) namedRoots.delete(key);
+  };
+}
+/** Remove a named root; returns whether it existed. */
+export function unregisterRoot(name: string): boolean {
+  return namedRoots.delete(normalizeRootName(name));
+}
+/** Resolve a named root (`"name"` or `"#name"`). */
+export function getRoot(name: string): VioElement | undefined {
+  return namedRoots.get(normalizeRootName(name));
+}
+/** Registered root names, for diagnostics. */
+export function getRootNames(): string[] {
+  return [...namedRoots.keys()];
+}
+/** `querySelector` for the renderer: only simple `#name` root selectors are supported. */
+export function queryRoot(selector: string): VioElement | null {
+  const match = /^#([^\s>+~.[\]:]+)$/.exec(selector.trim());
+  return match ? (namedRoots.get(match[1]!) ?? null) : null;
+}
+
 export function createVioRenderer(driver: VioDriver) {
   function nextNative(node: VioNode): object | null {
     const siblings = node.parent?.children ?? [];
@@ -140,6 +175,7 @@ export function createVioRenderer(driver: VioDriver) {
       if (!driver.setElementText(node, text) && text) insert(createText(text), node);
     },
     setScopeId: (node, id) => driver.setScopeId(node, id),
+    querySelector: queryRoot,
     patchProp(node, key, previous, value, _namespace, instance) {
       node.props[key] = value;
       if (/^on[^a-z]/.test(key)) {

@@ -46,7 +46,8 @@ The hooks come with rules that container authors must follow:
 - Role slots read `node.props.role`. Anchors (`before`) are `null` for role children because the flat
   VNode sibling list does not describe named slots.
 - A repeated insert is a **move**, not an append. The hook sees a child that is already parented and
-  must reorder or move it (`Notebook.reorderChild`, `Fixed.move`, remove+insert for `FlowBox`).
+  must reorder or move it (`Notebook.reorderChild`, `Fixed.move`, remove+reinsert the existing
+  `GtkFlowBoxChild` for `FlowBox`).
 - Removal must be **idempotent**. Vue does not guarantee removal order, and a full subtree teardown
   may skip individual `remove` calls.
 - Hooks must be functions; `registerWidget()` rejects any other value.
@@ -55,16 +56,16 @@ The hooks come with rules that container authors must follow:
 
 ### Containers that are now declarative
 
-| Container       | Implemented as                        | Placement API                                                  |
-| --------------- | ------------------------------------- | -------------------------------------------------------------- |
-| `Gtk.Notebook`  | `VNotebook` + `VNotebookPage`         | `appendPage`, `reorderChild`, `setTabLabel`, `removePage`      |
-| `Gtk.Paned`     | `VPaned`                              | `setStartChild` / `setEndChild`                                |
-| `Gtk.Overlay`   | `VOverlay`                            | `setChild` / `addOverlay` / `removeOverlay`                    |
-| `Gtk.HeaderBar` | `VHeaderBar` (also `role="titlebar"`) | `packStart` / `packEnd` / `setTitleWidget` / `remove`          |
-| `Gtk.CenterBox` | `VCenterBox`                          | `setStartWidget` / `setCenterWidget` / `setEndWidget`          |
-| `Gtk.FlowBox`   | `VFlowBox`                            | `append` / `insert` / `remove` (wrapper is recreated on moves) |
-| `Gtk.Fixed`     | `VFixed`                              | `put` / `move` / `remove`, positions from `x` / `y` props      |
-| `Gtk.Window`    | existing `VWindow`                    | `setChild`, plus `setTitlebar` for `role="titlebar"`           |
+| Container       | Implemented as                        | Placement API                                                |
+| --------------- | ------------------------------------- | ------------------------------------------------------------ |
+| `Gtk.Notebook`  | `VNotebook` + `VNotebookPage`         | `appendPage`, `reorderChild`, `setTabLabel`, `removePage`    |
+| `Gtk.Paned`     | `VPaned`                              | `setStartChild` / `setEndChild`                              |
+| `Gtk.Overlay`   | `VOverlay`                            | `setChild` / ordered `addOverlay` / `removeOverlay`          |
+| `Gtk.HeaderBar` | `VHeaderBar` (also `role="titlebar"`) | `packStart` / `packEnd` / `setTitleWidget` / repack on moves |
+| `Gtk.CenterBox` | `VCenterBox`                          | `setStartWidget` / `setCenterWidget` / `setEndWidget`        |
+| `Gtk.FlowBox`   | `VFlowBox`                            | `append` / `insert` / `remove`; wrapper survives moves       |
+| `Gtk.Fixed`     | `VFixed`                              | `put` / `move` / `remove`, positions from `x` / `y` props    |
+| `Gtk.Window`    | existing `VWindow`                    | `setChild`, plus `setTitlebar` for `role="titlebar"`         |
 
 The components live in `packages/vio/src/modules/gtk/containers.ts` and are exported from
 `@zede/vio`. Details and examples: [`docs/containers.md`](containers.md).
@@ -166,22 +167,20 @@ These are real today and are not planned as renderer changes:
   The table covers `model`, `factory`, `file`, `menu-model`, `application`, `settings`; other
   object properties need their own setter in a `watch`.
 - **Symbol props** as GTK properties.
-- **String `Teleport` targets.** There is no `querySelector`; pass a `VioElement` (or use
-  `useDetachedSlot`).
-- **`KeepAlive` without a storage type.** It creates `createElement("div")`; register a widget for
-  `"div"` first.
+- **Arbitrary `Teleport` selectors.** String targets resolve only through the named-root registry:
+  `registerRoot("name", root)` plus `to="#name"`. CSS selectors and DOM lookup are not implemented.
+  Pass a `VioElement` (or use `useDetachedSlot`) for any other target.
 - **Custom GObject properties** on a `registerClass` subclass. node-gtk exposes vfuncs, not property
   installation.
 - **Full-subtree teardown.** Vue calls `driver.remove` for individually removed children but not for
   every descendant of a fully unmounted subtree; descendants are disposed with their parent. Role
   containers therefore rely on GTK destruction or on the removed subtree becoming unreachable. When
   a page or slot is removed **while the container stays mounted**, the hooks detach it explicitly.
-  A `Gtk.Window` destroyed on unmount takes its children with it.
-- **`FlowBox` wrapper identity.** A keyed move preserves the content widget, but the internal
-  `GtkFlowBoxChild` wrapper is recreated, so wrapper-level CSS does not survive a move.
+  A `Gtk.Window` unmount now clears its content and titlebar before destruction.
 - **`HeaderBar` internal parenting.** `packStart`/`packEnd` place children inside an internal
   `GtkBox`, not directly under the header bar. Membership checks therefore walk ancestors, not
-  `getParent()`.
+  `getParent()`. A keyed move repacks the affected role group because GTK has no insert-at-index;
+  widget identity is preserved, but focus inside that group may be reset.
 - **String enum table.** Only the enums in `driver.ts` accept strings; other enums must be passed as
   GI integers.
 - **No HTML layout engine.** DOM directives (`v-html`, `v-text`), DOM event modifiers, CSS

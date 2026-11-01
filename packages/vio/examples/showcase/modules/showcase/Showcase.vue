@@ -17,13 +17,30 @@ import {
 
 const props = defineProps<{ quit: () => void }>();
 const items = ref(["alpha", "beta", "gamma"]);
+const badges = ref(["alpha", "beta", "gamma"]);
 const model = ref<{ selection?: object; factory?: object }>();
+
+const headerActions = ref([
+  { id: "add", label: "Добавить", run: addItem },
+  { id: "reorder", label: "Порядок", run: reorderHeader },
+  { id: "clear", label: "Очистить", run: clearItems },
+]);
 
 function addItem() {
   items.value = [...items.value, `item ${items.value.length + 1}`];
 }
 function clearItems() {
   items.value = [];
+}
+function reorderHeader() {
+  const [first, ...rest] = headerActions.value;
+  if (first) headerActions.value = [...rest, first];
+}
+function addBadge() {
+  badges.value = [...badges.value, `badge ${badges.value.length + 1}`];
+}
+function removeBadge() {
+  badges.value = badges.value.slice(1);
 }
 function close() {
   props.quit();
@@ -41,13 +58,16 @@ function close() {
   >
     <VHeaderBar role="titlebar">
       <template #start>
-        <VButton @clicked="addItem">Добавить</VButton>
+        <VButton v-for="action in headerActions" :key="action.id" @clicked="action.run()">
+          {{ action.label }}
+        </VButton>
       </template>
       <template #title>
-        <VLabel>VNotebook · VPaned · VOverlay · VListModel</VLabel>
+        <VLabel>VNotebook · VPaned · VOverlay ×N · VListModel</VLabel>
       </template>
       <template #end>
-        <VButton @clicked="clearItems">Очистить</VButton>
+        <VButton @clicked="addBadge">Бейдж +</VButton>
+        <VButton @clicked="removeBadge">Бейдж −</VButton>
       </template>
     </VHeaderBar>
 
@@ -94,8 +114,16 @@ function close() {
             </template>
           </VCenterBox>
           <template #overlay>
-            <VLabel :halign="'end'" :valign="'start'" :margin-top="12" :margin-end="12">
-              overlay
+            <VLabel
+              v-for="(badge, index) in badges"
+              :key="badge"
+              class="badge"
+              :halign="'end'"
+              :valign="'start'"
+              :margin-top="12 + index * 34"
+              :margin-end="12"
+            >
+              {{ badge }}
             </VLabel>
           </template>
         </VOverlay>
@@ -103,3 +131,11 @@ function close() {
     </VPaned>
   </VWindow>
 </template>
+
+<style scoped>
+.badge {
+  background-color: rgba(53, 132, 228, 0.35);
+  border-radius: 12px;
+  padding: 4px 10px;
+}
+</style>

@@ -2,9 +2,12 @@ import Gtk from "gi:Gtk-4.0";
 import Gio from "gi:Gio-2.0";
 import { getGType } from "node-gtk";
 import {
+  Comment,
+  Fragment,
   Teleport,
   defineComponent,
   h,
+  isVNode,
   markRaw,
   onMounted,
   shallowRef,
@@ -16,7 +19,7 @@ import {
   type VNode,
   type VNodeChild,
 } from "@vue/runtime-core";
-import { createRoot, type VioElement } from "../renderer/index.ts";
+import { createRoot, type VioElement, type VioNode } from "../renderer/index.ts";
 import { getWidgetDefinition, hasWidget, registerWidget, type WidgetDefinition } from "./driver.ts";
 import { defineWidgetComponent } from "./components.ts";
 
@@ -103,6 +106,50 @@ function isInside(child: object, ancestor: object): boolean {
   return false;
 }
 
+/**
+ * Synthetic slot wrappers exist only to carry a role. When such a wrapper leaves a container,
+ * release its single child so a keyed removal does not leave user widgets parented to a detached
+ * box. Ordinary role children are left untouched.
+ */
+function releaseSlot(node: VioNode, widget: InstanceType<typeof Gtk.Widget>): void {
+  if (node.props["slot-container"] !== true || !(widget instanceof Gtk.Box)) return;
+  for (let child = widget.getFirstChild(); child; child = widget.getFirstChild())
+    widget.remove(child);
+}
+
+function flattenSlot(slot?: Slot): VNodeChild[] {
+  const result: VNodeChild[] = [];
+  const visit = (child: VNodeChild): void => {
+    if (Array.isArray(child)) {
+      for (const item of child) visit(item);
+      return;
+    }
+    if (child == null || typeof child === "boolean") return;
+    if (isVNode(child)) {
+      if (child.type === Comment) return;
+      if (child.type === Fragment) {
+        visit(child.children as VNodeChild);
+        return;
+      }
+    }
+    result.push(child);
+  };
+  if (slot) visit(slot());
+  return result;
+}
+
+/** One role wrapper per slot item, keyed by the item key so reorders keep the wrapper identity. */
+function slotWrapper(role: string, item: VNodeChild, index: number): VNode {
+  const explicit = isVNode(item) ? item.key : undefined;
+  const key = `${role}:${explicit == null ? `index:${index}` : String(explicit)}`;
+  return h("box", { role, key, "slot-container": true }, [item]);
+}
+
+const roleWidgets = (parent: VioElement, role: string): Array<InstanceType<typeof Gtk.Widget>> =>
+  parent.children
+    .filter((child) => child.widget && child.props.role === role)
+    .map((child) => child.widget as InstanceType<typeof Gtk.Widget>);
+
 function flowIndex(flow: InstanceType<typeof Gtk.FlowBox>, child: object): number {
   for (let index = 0; ; index++) {
     const item = flow.getChildAtIndex(index);
@@ -130,11 +177,13 @@ define("vio-notebook", {
     const position = Math.max(0, Math.min(index, notebook.getNPages() - 1));
     if (notebook.pageNum(child) !== position) notebook.reorderChild(child, position);
   },
-  removeChild({ parentWidget, child, role }) {
+  removeChild({ parentWidget, child, role, node }) {
     if (role !== "page") return;
     const notebook = parentWidget as InstanceType<typeof Gtk.Notebook>;
     const page = notebook.pageNum(child);
-    if (page !== -1) notebook.removePage(page);
+    if (page === -1) return;
+    notebook.removePage(page);
+    releaseSlot(node, child);
   },
 });
 
@@ -151,30 +200,64 @@ define("vio-paned", {
       throw new Error(`vio: VPaned children must use the #start or #end slot`);
     }
   },
-  removeChild({ parentWidget, child, role }) {
+  removeChild({ parentWidget, child, role, node }) {
     const paned = parentWidget as InstanceType<typeof Gtk.Paned>;
-    if (role === "start" && paned.getStartChild() === child) paned.setStartChild(null);
-    else if (role === "end" && paned.getEndChild() === child) paned.setEndChild(null);
+    if (role === "start" && paned.getStartChild() === child) {
+      paned.setStartChild(null);
+      releaseSlot(node, child);
+    } else if (role === "end" && paned.getEndChild() === child) {
+      paned.setEndChild(null);
+      releaseSlot(node, child);
+    }
   },
 });
+
+function overlayLayers(
+  overlay: InstanceType<typeof Gtk.Overlay>,
+): Array<InstanceType<typeof Gtk.Widget>> {
+  const main = overlay.getChild();
+  const result: Array<InstanceType<typeof Gtk.Widget>> = [];
+  for (let child = overlay.getFirstChild(); child; child = child.getNextSibling())
+    if (child !== main) result.push(child);
+  return result;
+}
+
+function reorderOverlayLayers(
+  overlay: InstanceType<typeof Gtk.Overlay>,
+  desired: Array<InstanceType<typeof Gtk.Widget>>,
+): void {
+  const current = overlayLayers(overlay);
+  if (current.length === desired.length && current.every((widget, i) => widget === desired[i]))
+    return;
+  // Gtk.Overlay has no insert-at-index for overlays; remove and re-add preserves widget identity
+  // and makes both child order and z-order follow the VNode order.
+  for (const widget of current) overlay.removeOverlay(widget);
+  for (const widget of desired) overlay.addOverlay(widget);
+}
 
 define("vio-overlay", {
   create: () => new Gtk.Overlay(),
   children: "none",
-  insertChild({ parentWidget, child, role }) {
+  insertChild({ parentWidget, child, parent, role }) {
     const overlay = parentWidget as InstanceType<typeof Gtk.Overlay>;
     if (role === "overlay") {
-      if (!isInside(child, overlay)) overlay.addOverlay(child);
+      const desired = roleWidgets(parent, "overlay");
+      reorderOverlayLayers(overlay, desired.includes(child) ? desired : [...desired, child]);
     } else if (role === "main" || role === null) {
       if (overlay.getChild() !== child) overlay.setChild(child);
     } else {
       throw new Error(`vio: VOverlay children must use role 'main' or 'overlay'`);
     }
   },
-  removeChild({ parentWidget, child, role }) {
+  removeChild({ parentWidget, child, role, node }) {
     const overlay = parentWidget as InstanceType<typeof Gtk.Overlay>;
-    if ((role === "main" || role === null) && overlay.getChild() === child) overlay.setChild(null);
-    else if (role === "overlay" && isInside(child, overlay)) overlay.removeOverlay(child);
+    if ((role === "main" || role === null) && overlay.getChild() === child) {
+      overlay.setChild(null);
+      releaseSlot(node, child);
+    } else if (role === "overlay") {
+      if (overlayLayers(overlay).includes(child)) overlay.removeOverlay(child);
+      releaseSlot(node, child);
+    }
   },
 });
 
@@ -193,42 +276,129 @@ define("vio-center-box", {
       throw new Error(`vio: VCenterBox children must use the #start, #center or #end slot`);
     }
   },
-  removeChild({ parentWidget, child, role }) {
+  removeChild({ parentWidget, child, role, node }) {
     const box = parentWidget as InstanceType<typeof Gtk.CenterBox>;
-    if (role === "start" && box.getStartWidget() === child) box.setStartWidget(null);
-    else if (role === "center" && box.getCenterWidget() === child) box.setCenterWidget(null);
-    else if (role === "end" && box.getEndWidget() === child) box.setEndWidget(null);
+    if (role === "start" && box.getStartWidget() === child) {
+      box.setStartWidget(null);
+      releaseSlot(node, child);
+    } else if (role === "center" && box.getCenterWidget() === child) {
+      box.setCenterWidget(null);
+      releaseSlot(node, child);
+    } else if (role === "end" && box.getEndWidget() === child) {
+      box.setEndWidget(null);
+      releaseSlot(node, child);
+    }
   },
 });
+
+interface HeaderRoles {
+  start: Array<InstanceType<typeof Gtk.Widget>>;
+  end: Array<InstanceType<typeof Gtk.Widget>>;
+}
+const headerRoles = new WeakMap<object, HeaderRoles>();
+function headerState(bar: object): HeaderRoles {
+  let state = headerRoles.get(bar);
+  if (!state) {
+    state = { start: [], end: [] };
+    headerRoles.set(bar, state);
+  }
+  return state;
+}
+
+/**
+ * Gtk.HeaderBar only exposes packStart/packEnd, with no insert-at-index. Rebuild the role group
+ * from the VNode order; the widgets themselves are re-packed, so identity and CSS survive.
+ * packEnd reverses its internal order, hence the reverse iteration for `#end`.
+ */
+function repackHeaderRole(
+  bar: InstanceType<typeof Gtk.HeaderBar>,
+  role: "start" | "end",
+  desired: Array<InstanceType<typeof Gtk.Widget>>,
+): void {
+  const state = headerState(bar);
+  for (const widget of state[role]) if (isInside(widget, bar)) bar.remove(widget);
+  state[role] = [];
+  if (role === "start") {
+    for (const widget of desired) {
+      bar.packStart(widget);
+      state.start.push(widget);
+    }
+  } else {
+    for (let index = desired.length - 1; index >= 0; index--) bar.packEnd(desired[index]!);
+    state.end.push(...desired);
+  }
+}
 
 define("vio-header-bar", {
   create: () => new Gtk.HeaderBar(),
   children: "none",
-  insertChild({ parentWidget, child, role }) {
+  insertChild({ parentWidget, child, parent, role }) {
     const bar = parentWidget as InstanceType<typeof Gtk.HeaderBar>;
     if (role === "title") {
       if (bar.getTitleWidget() !== child) bar.setTitleWidget(child);
-    } else if (role === "start") {
-      if (!isInside(child, bar)) bar.packStart(child);
-    } else if (role === "end") {
-      if (!isInside(child, bar)) bar.packEnd(child);
+    } else if (role === "start" || role === "end") {
+      const desired = roleWidgets(parent, role);
+      repackHeaderRole(bar, role, desired.includes(child) ? desired : [...desired, child]);
     } else {
       throw new Error(`vio: VHeaderBar children must use the #start, #end or #title slot`);
     }
   },
-  removeChild({ parentWidget, child, role }) {
+  removeChild({ parentWidget, child, role, node }) {
     const bar = parentWidget as InstanceType<typeof Gtk.HeaderBar>;
-    if (role === "title" && bar.getTitleWidget() === child) bar.setTitleWidget(null);
-    else if (isInside(child, bar)) bar.remove(child);
+    if (role === "title" && bar.getTitleWidget() === child) {
+      bar.setTitleWidget(null);
+      releaseSlot(node, child);
+    } else if (role === "start" || role === "end") {
+      const state = headerState(bar);
+      state[role] = state[role].filter((widget) => widget !== child);
+      if (isInside(child, bar)) bar.remove(child);
+      releaseSlot(node, child);
+    } else if (isInside(child, bar)) {
+      bar.remove(child);
+      releaseSlot(node, child);
+    }
   },
 });
 
-function flowDetach(flow: InstanceType<typeof Gtk.FlowBox>, child: object): void {
-  const wrapper = (child as InstanceType<typeof Gtk.Widget>).getParent();
-  flow.remove(child as InstanceType<typeof Gtk.Widget>);
-  // GtkFlowBox.remove() detaches the wrapper but leaves the content widget parented to it, so a
-  // following insert() trips a Gtk-CRITICAL. Clear the wrapper to release the content first.
-  if (wrapper instanceof Gtk.FlowBoxChild && wrapper.getChild() === child) wrapper.setChild(null);
+function flowWrapper(
+  flow: InstanceType<typeof Gtk.FlowBox>,
+  child: InstanceType<typeof Gtk.Widget>,
+): InstanceType<typeof Gtk.FlowBoxChild> | null {
+  const parent = child.getParent();
+  return parent instanceof Gtk.FlowBoxChild &&
+    parent.getParent() === flow &&
+    parent.getChild() === child
+    ? parent
+    : null;
+}
+
+function flowDetach(
+  flow: InstanceType<typeof Gtk.FlowBox>,
+  child: InstanceType<typeof Gtk.Widget>,
+): void {
+  const wrapper = flowWrapper(flow, child);
+  if (!wrapper) return;
+  flow.remove(child);
+  // Removal must detach the user widget too; a move keeps the wrapper and its CSS instead.
+  if (wrapper.getChild() === child) wrapper.setChild(null);
+}
+
+function flowMove(
+  flow: InstanceType<typeof Gtk.FlowBox>,
+  child: InstanceType<typeof Gtk.Widget>,
+  index: number,
+): void {
+  const wrapper = flowWrapper(flow, child);
+  if (!wrapper) {
+    if (index >= flowCount(flow)) flow.append(child);
+    else flow.insert(child, Math.max(0, index));
+    return;
+  }
+  // Gtk.FlowBox.remove() leaves the content attached to its GtkFlowBoxChild. Inserting that same
+  // child back keeps the wrapper, its classes and the content widget identity intact.
+  flow.remove(child);
+  if (index >= flowCount(flow)) flow.append(wrapper);
+  else flow.insert(wrapper, Math.max(0, index));
 }
 
 define("vio-flow-box", {
@@ -238,9 +408,7 @@ define("vio-flow-box", {
     const flow = parentWidget as InstanceType<typeof Gtk.FlowBox>;
     const current = flowIndex(flow, child);
     if (current === index) return;
-    if (current !== -1) flowDetach(flow, child);
-    if (index >= flowCount(flow)) flow.append(child);
-    else flow.insert(child, Math.max(0, index));
+    flowMove(flow, child, index);
   },
   removeChild({ parentWidget, child }) {
     const flow = parentWidget as InstanceType<typeof Gtk.FlowBox>;
@@ -309,6 +477,7 @@ export const VNotebookPage = defineComponent({
         "box",
         {
           role: "page",
+          "slot-container": true,
           ...(detached || props.label == null ? {} : { "tab-label": props.label }),
           ref: element,
         },
@@ -323,8 +492,8 @@ export const VPaned = defineContainerComponent(
   ({ attrs, slots, element }) => {
     const start = slots.start ?? slots.default;
     return h("vio-paned", { ...attrs, ref: element }, [
-      start ? h("box", { role: "start" }, start()) : null,
-      slots.end ? h("box", { role: "end" }, slots.end()) : null,
+      start ? h("box", { role: "start", key: "start", "slot-container": true }, start()) : null,
+      slots.end ? h("box", { role: "end", key: "end", "slot-container": true }, slots.end()) : null,
     ]);
   },
 );
@@ -332,11 +501,15 @@ export const VPaned = defineContainerComponent(
 export const VOverlay = defineContainerComponent(
   "VOverlay",
   "vio-overlay",
-  ({ attrs, slots, element }) =>
-    h("vio-overlay", { ...attrs, ref: element }, [
-      slots.default ? h("box", { role: "main" }, slots.default()) : null,
-      slots.overlay ? h("box", { role: "overlay" }, slots.overlay()) : null,
-    ]),
+  ({ attrs, slots, element }) => {
+    const overlays = flattenSlot(slots.overlay);
+    return h("vio-overlay", { ...attrs, ref: element }, [
+      slots.default
+        ? h("box", { role: "main", key: "main", "slot-container": true }, slots.default())
+        : null,
+      ...overlays.map((item, index) => slotWrapper("overlay", item, index)),
+    ]);
+  },
 );
 
 export const VCenterBox = defineContainerComponent(
@@ -344,25 +517,34 @@ export const VCenterBox = defineContainerComponent(
   "vio-center-box",
   ({ attrs, slots, element }) =>
     h("vio-center-box", { ...attrs, ref: element }, [
-      slots.start ? h("box", { role: "start" }, slots.start()) : null,
-      (slots.center ?? slots.default)
-        ? h("box", { role: "center" }, (slots.center ?? slots.default)?.())
+      slots.start
+        ? h("box", { role: "start", key: "start", "slot-container": true }, slots.start())
         : null,
-      slots.end ? h("box", { role: "end" }, slots.end()) : null,
+      (slots.center ?? slots.default)
+        ? h(
+            "box",
+            { role: "center", key: "center", "slot-container": true },
+            (slots.center ?? slots.default)?.(),
+          )
+        : null,
+      slots.end ? h("box", { role: "end", key: "end", "slot-container": true }, slots.end()) : null,
     ]),
 );
 
 export const VHeaderBar = defineContainerComponent(
   "VHeaderBar",
   "vio-header-bar",
-  ({ attrs, slots, element }) =>
-    h("vio-header-bar", { ...attrs, ref: element }, [
-      (slots.start ?? slots.default)
-        ? h("box", { role: "start" }, (slots.start ?? slots.default)?.())
+  ({ attrs, slots, element }) => {
+    const start = flattenSlot(slots.start ?? slots.default);
+    const end = flattenSlot(slots.end);
+    return h("vio-header-bar", { ...attrs, ref: element }, [
+      ...start.map((item, index) => slotWrapper("start", item, index)),
+      slots.title
+        ? h("box", { role: "title", key: "title", "slot-container": true }, slots.title())
         : null,
-      slots.title ? h("box", { role: "title" }, slots.title()) : null,
-      slots.end ? h("box", { role: "end" }, slots.end()) : null,
-    ]),
+      ...end.map((item, index) => slotWrapper("end", item, index)),
+    ]);
+  },
 );
 
 export const VFlowBox = defineContainerComponent(
