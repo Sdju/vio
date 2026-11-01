@@ -1083,7 +1083,8 @@ export const VCalendar = defineComponent({
       if (!next || dateKey(next) === dateKey(widget.getDate())) return;
       applying = true;
       try {
-        widget.setDate(next);
+        // `setDate()` is GTK 4.20+; `selectDay()` has the same year/month/day behavior on 4.14+.
+        widget.selectDay(next);
       } finally {
         applying = false;
       }

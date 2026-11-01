@@ -1,5 +1,6 @@
 import Gtk from "gi:Gtk-4.0";
 import type { WidgetDefinition } from "./types.ts";
+import { createGtkClass } from "./gtk-version.ts";
 
 /**
  * Only these Gtk containers install their single child through `setChild()`. The table is an
@@ -88,6 +89,27 @@ const definitionOf = (type: string): WidgetDefinition => ({
   constructProps: constructPropsOf(type),
 });
 
+interface LaterClass {
+  component: string;
+  className: string;
+  major: number;
+  minor: number;
+}
+
+/**
+ * Gtk classes that the GTK 4.14 typings and runtime do not have. Resolving them through the
+ * introspection map keeps the failure clear on older runtimes instead of returning `undefined`.
+ */
+const laterClasses: Record<string, LaterClass> = {
+  "svg-widget": { component: "VSvgWidget", className: "SvgWidget", major: 4, minor: 24 },
+  "popover-bin": { component: "VPopoverBin", className: "PopoverBin", major: 4, minor: 22 },
+};
+
+const laterDefinition = (known: LaterClass): WidgetDefinition => ({
+  create: () => createGtkClass(known.component, known.className, known.major, known.minor),
+  children: "none",
+});
+
 const definitions = new Map<string, WidgetDefinition | undefined>();
 let classes: Map<string, new () => object> | undefined;
 
@@ -125,8 +147,14 @@ const normalizeType = (type: string) => aliases.get(typeName(type)) ?? typeName(
 /** The definition for a kebab-case Gtk widget class, or `undefined` when it is not a widget. */
 export function resolveIntrospected(type: string): WidgetDefinition | undefined {
   const name = normalizeType(type);
-  if (!definitions.has(name))
-    definitions.set(name, widgetClasses().has(name) ? definitionOf(name) : undefined);
+  if (!definitions.has(name)) {
+    const classes = widgetClasses();
+    const later = laterClasses[name];
+    definitions.set(
+      name,
+      classes.has(name) ? definitionOf(name) : later ? laterDefinition(later) : undefined,
+    );
+  }
   return definitions.get(name);
 }
 

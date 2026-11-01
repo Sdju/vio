@@ -278,7 +278,7 @@ function useAsyncRunner(name: string, emitError: (error: Error) => void) {
       callback: (result: unknown) => void,
       cancellable: InstanceType<typeof Gio.Cancellable>,
     ) => void,
-    finish: (result: unknown) => T,
+    finish: (result: unknown) => T | null,
   ): Promise<T | null> => {
     if (pending)
       throw new Error(
@@ -313,7 +313,7 @@ function useAsyncRunner(name: string, emitError: (error: Error) => void) {
         if (operation.settled) return;
         operation.settled = true;
         if (pending === operation) pending = null;
-        let value: T;
+        let value: T | null;
         try {
           value = finish(result);
         } catch (error) {

@@ -15,11 +15,30 @@ import {
 import type { VioElement } from "../renderer/index.ts";
 import { getWidgetDefinition, hasWidget, registerWidget, type WidgetDefinition } from "./driver.ts";
 import { releaseSlot } from "./containers.ts";
+import { createGtkClass, requireGtkMethod, requireGtkVersion } from "./gtk-version.ts";
 
 type Attrs = Record<string, unknown>;
 type Handler = (...args: unknown[]) => unknown;
 type NativeWidget = InstanceType<typeof Gtk.Widget>;
-type SvgWidget = InstanceType<typeof Gtk.SvgWidget>;
+
+/**
+ * Shapes for classes and methods newer than the GTK 4.14 typings used by CI. The native objects
+ * are still real GTK objects; only the compile-time surface is declared locally.
+ */
+interface PopoverBinNative {
+  getChild(): NativeWidget | null;
+  setChild(child: NativeWidget | null): void;
+  getPopover(): InstanceType<typeof Gtk.Popover> | null;
+  setPopover(popover: InstanceType<typeof Gtk.Popover> | null): void;
+}
+interface SvgWidgetNative {
+  readonly svg: object | null;
+  loadFromBytes(bytes: InstanceType<typeof GLib.Bytes>): void;
+  setState(state: number): void;
+}
+type WindowControlsNative = InstanceType<typeof Gtk.WindowControls> & {
+  getUseNativeControls?: () => boolean;
+};
 
 function useElement() {
   const element = shallowRef<VioElement | null>(null);
@@ -705,10 +724,10 @@ export const VLockButton = defineComponent({
  * ---------------------------------------------------------------------------------------------- */
 
 define("vio-popover-bin", {
-  create: () => new Gtk.PopoverBin(),
+  create: () => createGtkClass<PopoverBinNative>("VPopoverBin", "PopoverBin", 4, 22),
   children: "none",
   insertChild({ parentWidget, child, role }) {
-    const bin = parentWidget as InstanceType<typeof Gtk.PopoverBin>;
+    const bin = parentWidget as unknown as PopoverBinNative;
     if (role === "popover") {
       if (!(child instanceof Gtk.Popover))
         throw new Error("vio: VPopoverBin #popover must contain a Gtk.Popover");
@@ -725,7 +744,7 @@ define("vio-popover-bin", {
     if (current !== child) bin.setChild(child);
   },
   removeChild({ parentWidget, child, role, node }) {
-    const bin = parentWidget as InstanceType<typeof Gtk.PopoverBin>;
+    const bin = parentWidget as unknown as PopoverBinNative;
     if (role === "popover") {
       if (bin.getPopover() === child) bin.setPopover(null);
       releaseSlot(node, child);
@@ -745,7 +764,7 @@ export const VPopoverBin = defineComponent({
   },
   setup(props, { attrs, slots, expose }) {
     const { element, handle } = useElement();
-    const bin = () => element.value?.widget as InstanceType<typeof Gtk.PopoverBin> | undefined;
+    const bin = () => element.value?.widget as unknown as PopoverBinNative | undefined;
     expose({
       element: handle.element,
       get widget() {
@@ -914,9 +933,10 @@ export const VSvgWidget = defineComponent({
   setup(props, { attrs, expose }) {
     const { element, handle } = useElement();
     const error = shallowRef<string | null>(null);
-    const svg = () => (element.value?.widget as SvgWidget | undefined)?.svg ?? null;
+    const svg = () =>
+      (element.value?.widget as unknown as SvgWidgetNative | undefined)?.svg ?? null;
     const sync = () => {
-      const widget = element.value?.widget as SvgWidget | undefined;
+      const widget = element.value?.widget as unknown as SvgWidgetNative | undefined;
       if (!widget) return;
       error.value = null;
       let bytes = bytesOf(props.bytes);
@@ -1015,9 +1035,10 @@ export const VWindowControls = defineComponent({
     decorative: { type: Boolean as PropType<boolean | undefined>, default: undefined },
   },
   setup(props, { attrs, expose }) {
+    if (props.useNativeControls !== undefined)
+      requireGtkVersion("VWindowControls.useNativeControls", 4, 18);
     const { element, handle } = useElement();
-    const controls = () =>
-      element.value?.widget as InstanceType<typeof Gtk.WindowControls> | undefined;
+    const controls = () => element.value?.widget as unknown as WindowControlsNative | undefined;
     expose({
       element: handle.element,
       get widget() {
@@ -1030,7 +1051,15 @@ export const VWindowControls = defineComponent({
         return controls()?.getDecorationLayout() ?? null;
       },
       get useNativeControls() {
-        return controls()?.getUseNativeControls() ?? false;
+        const widget = controls();
+        if (!widget) return false;
+        const method = requireGtkMethod(
+          "VWindowControls.useNativeControls",
+          widget.getUseNativeControls,
+          4,
+          18,
+        );
+        return method.call(widget);
       },
       get empty() {
         return controls()?.getEmpty() ?? true;

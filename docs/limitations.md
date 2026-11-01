@@ -685,6 +685,30 @@ Both rely on the `constructProps` hook described under [Construct-only propertie
   warning line. The Gizmo slider warning is avoided in the test and demo with the style rule
   `slider { min-width: 16px; min-height: 16px; }`; the library does not install global CSS.
 
+## GTK version floors
+
+Some wrappers use classes or methods that are newer than the oldest GTK supported by the renderer.
+The gates below are checked at widget creation (or, for a read-only handle getter, when it is read):
+
+- `VPopoverBin` / `Gtk.PopoverBin` requires GTK **4.22+** (the wave brief said 4.20; the GTK
+  4.24.1 GIR marks `GtkPopoverBin` as 4.22).
+- `VSvgWidget` / `Gtk.SvgWidget` requires GTK **4.24+** (the wave brief said 4.22; in the GTK
+  4.24.1 GIR, `GtkSvg` is version 4.22 and `GtkSvgWidget` is version 4.24).
+- `VWindowControls`' `useNativeControls` prop and handle getter require GTK **4.18+**
+  (`Gtk.WindowControls:use-native-controls`; the wave brief said 4.20).
+- `VCalendar` uses `Gtk.Calendar.selectDay()`, which exists on GTK 4.14 and keeps the same
+  year/month/day behavior; the 4.20+ `setDate()` method is not required.
+
+On an older runtime these paths throw
+`vio: <component> requires GTK <major>.<minor>+ (found <major>.<minor>)` instead of failing with a
+`ReferenceError` or `undefined is not a constructor`. `VPicture` is not gated: the wave brief grouped
+it with 4.22, but `Gtk.Picture` exists since GTK 4.0 and the wrapper uses only properties available
+in 4.14, so it works there without a newer class.
+
+`vp run check` type-checks against the GTK **4.14** typings used by CI (Ubuntu 24.04), while runtime
+behavior is verified on GTK **4.24.1**. The shared helper for both checks lives in
+`packages/vio/src/modules/gtk/gtk-version.ts`.
+
 ## Imperative escape hatch
 
 `.widget` on a component ref and `vShow` still work against the raw GTK object. For any GTK API that
