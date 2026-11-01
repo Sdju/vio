@@ -32,6 +32,10 @@ interface SignalBinding {
 /** Native operations are isolated so the reconciler can be tested without GTK. */
 export interface VioDriver {
   isAnchor?(node: VioNode): boolean;
+  /** Called before Vue mounts a subtree; windows can postpone presentation until it ends. */
+  beginMount?(): void;
+  /** Called after the mount subtree is complete. */
+  endMount?(): void;
   create(type: string): object;
   createText(text: string): object;
   insert(node: VioNode, parent: VioElement, before: object | null): void;
@@ -225,5 +229,28 @@ export function createVioRenderer(driver: VioDriver) {
       }
     },
   });
-  return { ...renderer, createRoot };
+  return { ...renderer, createRoot, createApp: withMountHooks(renderer.createApp, driver) };
+}
+
+/**
+ * Window presentation can only be requested after the whole subtree exists: GTK rejects
+ * `setTitlebar()` on a realized window, and Vue may patch props before or after children.
+ */
+function withMountHooks<T extends (...args: never[]) => { mount: (...args: never[]) => unknown }>(
+  createApp: T,
+  driver: VioDriver,
+): T {
+  return ((...args: Parameters<T>) => {
+    const app = createApp(...args);
+    const mount = app.mount;
+    app.mount = ((...mountArgs: Parameters<typeof mount>) => {
+      driver.beginMount?.();
+      try {
+        return mount(...mountArgs);
+      } finally {
+        driver.endMount?.();
+      }
+    }) as typeof app.mount;
+    return app;
+  }) as T;
 }

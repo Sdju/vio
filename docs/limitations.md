@@ -176,7 +176,8 @@ These are real today and are not planned as renderer changes:
   every descendant of a fully unmounted subtree; descendants are disposed with their parent. Role
   containers therefore rely on GTK destruction or on the removed subtree becoming unreachable. When
   a page or slot is removed **while the container stays mounted**, the hooks detach it explicitly.
-  A `Gtk.Window` unmount now clears its content and titlebar before destruction.
+  A `Gtk.Window` unmount destroys the window before clearing its (now unrealized) titlebar slot, so
+  GTK does not warn about `setTitlebar()` on a realized window.
 - **`HeaderBar` internal parenting.** `packStart`/`packEnd` place children inside an internal
   `GtkBox`, not directly under the header bar. Membership checks therefore walk ancestors, not
   `getParent()`. A keyed move repacks the affected role group because GTK has no insert-at-index;

@@ -46,6 +46,11 @@ object).
 
 `VHeaderBar role="titlebar"` is a direct child of `VWindow`; the window driver calls
 `setTitlebar()` instead of treating it as content, so it does not consume the single content slot.
+Vue normally mounts children before props; if `visible` is patched first, the GTK driver holds
+presentation until the mount subtree is complete. Either way the titlebar is installed before GTK
+realizes the window, regardless of prop/child patch order. On unmount the window is destroyed first
+and its titlebar slot is cleared afterwards: GTK warns when `setTitlebar()` runs on a realized
+window, so the titlebar cannot be changed while the window is already visible.
 
 `VNotebookPage` accepts a string `label`. For a widget tab label, use the `#tab-label` slot: the
 component teleports it into a detached root and calls `Notebook.setTabLabel()`.
@@ -99,6 +104,11 @@ Rules the driver guarantees:
 `hasWidget(type)` and `getWidgetDefinition(type)` make wrapper libraries idempotent:
 `registerWidget()` is global and throws on duplicates. `getWidgetTypes()` returns the registered type
 names, which is useful in diagnostics and error messages.
+
+The renderer calls optional `VioDriver.beginMount()` / `endMount()` around `app.mount()`. The GTK
+driver uses them to postpone `visible: true` on windows until the whole subtree exists, which keeps
+`setTitlebar()` ahead of realization. A custom driver can ignore both hooks or use them for its own
+deferred work.
 
 ## Slot order, multiple overlays and removal
 

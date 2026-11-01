@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import Gtk from "gi:Gtk-4.0";
 import Gio from "gi:Gio-2.0";
 import { getGType } from "node-gtk";
@@ -312,6 +314,64 @@ await test("VHeaderBar: start/end/title slots and window titlebar role", async (
   } finally {
     app.unmount();
   }
+});
+
+await test("VWindow: visible titlebar is installed before realization and cleared on unmount", () => {
+  const source = `
+    import Gtk from "gi:Gtk-4.0";
+    import { createApp, h, VBox, VHeaderBar, VLabel, VWindow } from "@zede/vio";
+    Gtk.init();
+    const calls = [];
+    const original = Gtk.Window.prototype.setTitlebar;
+    Gtk.Window.prototype.setTitlebar = function (titlebar) {
+      calls.push(this.getRealized());
+      return original.call(this, titlebar);
+    };
+    const windows = (titlebarFirst) => () =>
+      h(VWindow, { visible: true }, {
+        default: () => [
+          titlebarFirst
+            ? h(VHeaderBar, { key: "bar", role: "titlebar" }, {
+                default: () => h(VLabel, null, { default: () => "bar" }),
+              })
+            : h(VBox, { key: "body" }, { default: () => h(VLabel, null, { default: () => "body" }) }),
+          titlebarFirst
+            ? h(VBox, { key: "body" }, { default: () => h(VLabel, null, { default: () => "body" }) })
+            : h(VHeaderBar, { key: "bar", role: "titlebar" }, {
+                default: () => h(VLabel, null, { default: () => "bar" }),
+              }),
+        ],
+      });
+    for (const titlebarFirst of [true, false]) {
+      const app = createApp({ render: windows(titlebarFirst) });
+      app.mount();
+      const window = app.root.children[0].widget;
+      if (!(window.getTitlebar() instanceof Gtk.HeaderBar)) throw new Error("titlebar is missing");
+      if (!window.getVisible()) throw new Error("the window is not visible after mount");
+      if (!window.getChild()) throw new Error("window content is missing");
+      app.unmount();
+    }
+    if (calls.some(Boolean))
+      throw new Error("setTitlebar() ran on a realized window: " + JSON.stringify(calls));
+    console.log("titlebar-ok");
+  `;
+  const result = spawnSync(
+    process.execPath,
+    ["--import", "@zede/vio/register", "--input-type=module", "-e", source],
+    {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+      timeout: 20_000,
+      env: process.env,
+    },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), "titlebar-ok");
+  assert.doesNotMatch(
+    result.stderr,
+    /gtk_window_set_titlebar\(\) called on a realized window/,
+    "mounting and unmounting a visible window must not trigger the GTK titlebar warning",
+  );
 });
 
 await test("VHeaderBar: keyed move in #start/#end follows the VNode order and keeps identity", async () => {

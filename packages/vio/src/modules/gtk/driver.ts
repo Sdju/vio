@@ -259,8 +259,25 @@ const nullSetters: Record<string, string> = {
 };
 const metadataProps = new Set(["role", "tab-label", "page", "slot-container"]);
 
+let mountDepth = 0;
+const pendingVisible = new Set<VioNode>();
+
+const flushVisibleWindows = () => {
+  for (const node of pendingVisible) {
+    if (node.widget instanceof Gtk.Window) native(node).setProperty("visible", true);
+  }
+  pendingVisible.clear();
+};
+
 export const gtkDriver: VioDriver = {
   isAnchor: (node) => !isController(node),
+  beginMount() {
+    mountDepth++;
+  },
+  endMount() {
+    if (mountDepth > 0) mountDepth--;
+    if (mountDepth === 0) flushVisibleWindows();
+  },
   create(type) {
     const definition = lookup(type);
     if (!definition)
@@ -415,6 +432,15 @@ export const gtkDriver: VioDriver = {
       applySelection(node);
       return;
     }
+    if (key === "visible" && node.widget instanceof Gtk.Window) {
+      // Vue normally mounts children before props. If a future order patches `visible` first,
+      // hold presentation until the subtree exists so the titlebar is installed pre-realization.
+      if (value === true && mountDepth > 0 && node.children.length === 0) {
+        pendingVisible.add(node);
+        return;
+      }
+      pendingVisible.delete(node);
+    }
     if (metadataProps.has(key)) return;
     if ((key === "x" || key === "y") && node.parent && node.parent.widget instanceof Gtk.Fixed) {
       gtkDriver.insert(node, node.parent, null);
@@ -477,9 +503,13 @@ export const gtkDriver: VioDriver = {
     states.delete(node);
     if (node.widget instanceof Gtk.Window) {
       const window = node.widget;
+      pendingVisible.delete(node);
+      const titlebar = window.getTitlebar();
       if (window.getChild()) window.setChild(null);
-      if (window.getTitlebar()) window.setTitlebar(null);
+      // GTK warns when the titlebar changes on a realized window. Destroy first, then clear the
+      // now-unrealized titlebar slot, so unmounting a visible window stays warning-free.
       window.destroy();
+      if (titlebar) window.setTitlebar(null);
     }
   },
 };
