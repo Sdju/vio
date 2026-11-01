@@ -2,6 +2,7 @@ export * from "./components.ts";
 export * from "./containers.ts";
 export * from "./controls.ts";
 export * from "./data.ts";
+export * from "./dialogs.ts";
 export * from "./types.ts";
 export {
   resolveIntrospected,

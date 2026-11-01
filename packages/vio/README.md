@@ -60,23 +60,30 @@ node --import @zede/vio/register main.ts
 
 ## Компоненты и свойства
 
-| Компонент                                           | GTK                                     |
-| --------------------------------------------------- | --------------------------------------- |
-| `VWindow`, `VBox`, `VGrid`, `VStack`                | Window, Box, Grid, Stack                |
-| `VEntry`, `VLabel`, `VButton`, `VImage`             | Entry, Label, Button, Image             |
-| `VListBox`, `VListBoxRow`, `VScrolledWindow`        | ListBox, ListBoxRow, ScrolledWindow     |
-| `VSeparator`, `VSpinner`, `VSwitch`, `VCheckButton` | Separator, Spinner, Switch, CheckButton |
-| `VNotebook`, `VNotebookPage`                        | Notebook, страница с tab label          |
-| `VPaned`, `VOverlay`, `VCenterBox`, `VHeaderBar`    | Paned, Overlay, CenterBox, HeaderBar    |
-| `VFlowBox`, `VFixed`                                | FlowBox, Fixed                          |
-| `VListView`, `VListModel`                           | ListView + модель/factory как ресурс    |
-| `VKeyController`                                    | EventControllerKey                      |
-| `VToggleButton`, `VLinkButton`, `VMenuButton`       | ToggleButton, LinkButton, MenuButton    |
-| `VPopover`, `VPopoverMenu`, `VPopoverMenuBar`       | Popover, PopoverMenu, PopoverMenuBar    |
-| `VExpander`, `VProgressBar`, `VLevelBar`            | Expander, ProgressBar, LevelBar         |
-| `VScale`, `VSpinButton`, `VDropDown`                | Scale, SpinButton, DropDown             |
-| `VComboBoxText`, `VPasswordEntry`                   | ComboBoxText, PasswordEntry             |
-| `VStackSwitcher`, `VStackSidebar`                   | StackSwitcher, StackSidebar             |
+| Компонент                                                    | GTK                                        |
+| ------------------------------------------------------------ | ------------------------------------------ |
+| `VWindow`, `VBox`, `VGrid`, `VStack`                         | Window, Box, Grid, Stack                   |
+| `VEntry`, `VLabel`, `VButton`, `VImage`                      | Entry, Label, Button, Image                |
+| `VListBox`, `VListBoxRow`, `VScrolledWindow`                 | ListBox, ListBoxRow, ScrolledWindow        |
+| `VSeparator`, `VSpinner`, `VSwitch`, `VCheckButton`          | Separator, Spinner, Switch, CheckButton    |
+| `VNotebook`, `VNotebookPage`                                 | Notebook, страница с tab label             |
+| `VPaned`, `VOverlay`, `VCenterBox`, `VHeaderBar`             | Paned, Overlay, CenterBox, HeaderBar       |
+| `VFlowBox`, `VFixed`                                         | FlowBox, Fixed                             |
+| `VListView`, `VListModel`                                    | ListView + модель/factory как ресурс       |
+| `VKeyController`                                             | EventControllerKey                         |
+| `VToggleButton`, `VLinkButton`, `VMenuButton`                | ToggleButton, LinkButton, MenuButton       |
+| `VPopover`, `VPopoverMenu`, `VPopoverMenuBar`                | Popover, PopoverMenu, PopoverMenuBar       |
+| `VExpander`, `VProgressBar`, `VLevelBar`                     | Expander, ProgressBar, LevelBar            |
+| `VScale`, `VSpinButton`, `VDropDown`                         | Scale, SpinButton, DropDown                |
+| `VComboBoxText`, `VPasswordEntry`                            | ComboBoxText, PasswordEntry                |
+| `VStackSwitcher`, `VStackSidebar`                            | StackSwitcher, StackSidebar                |
+| `VApplicationWindow`, `VAssistant`                           | ApplicationWindow, Assistant со страницами |
+| `VDialog`, `VMessageDialog`, `VAboutDialog`                  | Dialog, MessageDialog, AboutDialog         |
+| `VFileChooserDialog`, `VFileChooserNative`                   | FileChooserDialog, FileChooserNative       |
+| `VColorChooserDialog`, `VFontChooserDialog`                  | ColorChooserDialog, FontChooserDialog      |
+| `VAppChooserDialog`, `VPrintUnixDialog`                      | AppChooserDialog, PrintUnixDialog          |
+| `VPageSetupUnixDialog`                                       | PageSetupUnixDialog                        |
+| `VAlertDialog`, `VFileDialog`, `VColorDialog`, `VFontDialog` | асинхронные Promise-контроллеры            |
 
 Атрибуты соответствуют GObject properties. Принимаются camelCase и kebab-case: `:margin-top="16"`, `:hexpand="true"`, `:sensitive="!busy"`. Числа и boolean передавайте через `:`. `id` устанавливает GTK widget name. `class` поддерживает строку, массив и объект Vue; удаление binding восстанавливает исходные свойства и классы GTK.
 
@@ -113,6 +120,12 @@ Enum props можно передавать строками: `orientation="verti
 `VNotebookPage` принимает строковый `label` или слот `#tab-label` с произвольным виджетом заголовка. `VPaned` использует `#start`/`#end`, `VCenterBox` — `#start`/`#center`/`#end`, `VHeaderBar` — `#start`/`#end`/`#title`. `VHeaderBar role="titlebar"` должен быть прямым ребёнком `VWindow`: драйвер вызывает `setTitlebar()` и не занимает единственный content-слот окна. `VFixed` читает `x`/`y` из props ребёнка, `VFlowBox` сохраняет identity содержимого при keyed-переупорядочивании.
 
 Компоненты контейнеров и хелперы `useNative`, `useDetachedSlot`, `defineContainerComponent` экспортируются из `@zede/vio`. Полное описание: `docs/containers.md` репозитория. Контролы волны 1 (`VToggleButton`, `VExpander`, `VScale`, `VComboBoxText` и другие) и их `v-model`/слоты описаны в `docs/controls.md`.
+
+## Окна и диалоги
+
+`VWindow` расширен явными `title`, `default-width`, `default-height`, `modal`, `resizable`, `decorated`, `transient-for` и `destroy-with-parent`; `@close-request` может отменить закрытие, а unmount уничтожает окно. `VApplicationWindow` создаёт или переиспользует `Gtk.Application` по `application-id` и отдаёт наружу `@activate`/`@quit`. `VDialog` кладёт `#content` в content area и принимает декларативные `buttons`; `VAssistant` использует `VAssistantPage`, `v-model:current-page` и `@prepare`/`@apply`/`@close`. `VAlertDialog`, `VFileDialog`, `VColorDialog` и `VFontDialog` — контроллеры без виджета: `choose(parent)`/`open(parent)` возвращают Promise, отмена через `cancel()` резолвится в `null`. Полная таблица, response id, deprecated-замены и ограничения: [`docs/dialogs.md`](../../docs/dialogs.md).
+
+`vp run --filter @zede/vio demo:dialogs` открывает пример с `VWindow`, `VDialog`, `VAboutDialog` и `VAlertDialog`.
 
 Также доступны raw элементы `<gtk-box>`, `<gtk-label>` и другие зарегистрированные `gtk-*` tags. Они используют тот же renderer.
 

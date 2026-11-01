@@ -58,12 +58,11 @@ const mount = (render) => {
   return app;
 };
 const widgetOf = (app) => app.root.children[0].widget;
-const rootOf = (widget) => {
-  let node = widget;
-  while (node?.getParent()) node = node.getParent();
-  return node;
+const isAncestor = (ancestor, child) => {
+  for (let node = child.getParent(); node; node = node.getParent())
+    if (node === ancestor) return true;
+  return false;
 };
-const contains = (parent, child) => child.getParent() === parent || rootOf(child) === parent;
 
 const allowlisted = [
   "toggle-button",
@@ -87,11 +86,18 @@ const allowlisted = [
 ];
 
 /**
- * These four put `setChild()` content into an internal container (`GtkGizmo` for MenuButton,
- * `GtkPopoverContent` for Popover/PopoverMenu/EmojiChooser), so `getParent()` is not the widget
- * itself. Every other allowlisted class parents the child directly and is asserted strictly.
+ * Wave 1 debt: the check used to accept any ancestor (`rootOf`). On GTK 4.24 every allowlisted
+ * class except these four parents the `setChild()` widget directly, and the test now asserts
+ * `getParent() === parent` strictly. The four real exceptions put the content in a private GTK
+ * container; for them the test asserts both "not the direct parent" and "still an ancestor" with
+ * the concrete reason. See docs/widgets.md#single-child-allowlist on GTK 4.24.
  */
-const internalContentParents = new Set(["menu-button", "popover", "popover-menu", "emoji-chooser"]);
+const internalContentParents = new Map([
+  ["menu-button", "GtkMenuButton::setChild() installs the content in its internal GtkGizmo"],
+  ["popover", "GtkPopover::setChild() installs the content in the private GtkPopoverContent"],
+  ["popover-menu", "GtkPopoverMenu inherits Popover's private GtkPopoverContent"],
+  ["emoji-chooser", "GtkEmojiChooser inherits Popover's private GtkPopoverContent"],
+]);
 
 await test("wave 1 single allowlist classes accept a child through setChild()", async () => {
   for (const type of allowlisted) {
@@ -104,9 +110,11 @@ await test("wave 1 single allowlist classes accept a child through setChild()", 
     try {
       const child = parent.getChild?.();
       assert.ok(child instanceof Gtk.Label, `${type} installs the child widget`);
-      if (internalContentParents.has(type))
-        assert.ok(contains(parent, child), `${type} owns the child in its GTK hierarchy`);
-      else assert.equal(child.getParent(), parent, `${type} parents the child directly`);
+      const reason = internalContentParents.get(type);
+      if (reason) {
+        assert.notEqual(child.getParent(), parent, `${type}: ${reason}`);
+        assert.ok(isAncestor(parent, child), `${type} still owns the child in the GTK hierarchy`);
+      } else assert.equal(child.getParent(), parent, `${type} parents the child directly`);
     } finally {
       app.unmount();
     }

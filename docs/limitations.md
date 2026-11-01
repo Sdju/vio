@@ -244,6 +244,61 @@ These are real today and are not planned as renderer changes:
 - **No HTML layout engine.** DOM directives (`v-html`, `v-text`), DOM event modifiers, CSS
   preprocessors, external SFC blocks and browser transitions remain unsupported.
 
+## Wave 3: windows and dialogs
+
+The wave 3 components live in `packages/vio/src/modules/gtk/dialogs.ts`; the full API, response-id
+rules and async cancellation contract are in [`dialogs.md`](dialogs.md). The non-obvious limits:
+
+- **No nested main loops.** Async dialogs (`VAlertDialog`, `VFileDialog`, `VColorDialog`,
+  `VFontDialog`) return Promises and rely on the caller's existing GLib loop. A blocking `run()` on
+  a `Gtk.Dialog` is not exposed; tests and applications use `GLib.MainLoop`/`MainContext`.
+- **Async dialogs need a live parent.** `choose(parent)`/`open(parent)` throw
+  `vio: … requires a Gtk.Window parent` or `vio: … parent window has been destroyed`. Liveness is
+  checked with `Gtk.Window.listToplevels()`, which includes unrealized windows and drops destroyed
+  ones. There is no portal fallback and no "parent-less" async mode.
+- **One pending operation per controller.** A second `choose()`/`open()` while the first is pending
+  throws. `cancel()` or unmount resolves the Promise with `null` immediately and cancels the
+  `Gio.Cancellable`; a late native callback is ignored, so cancellation never becomes an unhandled
+  rejection or a hanging Promise.
+- **`VFileDialog` parent workaround.** On GTK 4.24.1/X11, passing a realized parent to
+  `gtk_file_dialog_open()` and cancelling immediately aborts the process. `VFileDialog` validates
+  the parent but passes it to GTK only while the parent is unrealized; a realized parent yields an
+  unparented native dialog. Color, font and alert dialogs pass the parent normally. This is a GTK
+  defect verified on 4.24.1, not a renderer limit.
+- **`Gtk.FileChooserDialog` needs realization for `response`.** On 4.24, `emit("response", …)` and
+  button clicks on an unrealized file chooser do not reach the signal; presenting it works but
+  emits unrelated GTK slider warnings in this environment. Tests inspect its properties and leave
+  real interaction to a desktop session.
+- **`VAppChooserDialog` construct-only props.** `content-type` and `gfile` cannot be set after
+  construction (GLib-GObject-CRITICAL). The component owns the dialog and passes both to the
+  constructor; later prop updates are not applied. Recreate it with a `key` to change them.
+- **`VMessageDialog` buttons are added manually.** `Gtk.MessageDialog:buttons` is construct-only and
+  not readable on 4.24. `VMessageDialog` creates the dialog with `NONE` and calls `addButton()` for
+  the requested stock set; the labels are the English `OK`/`Cancel`/`Yes`/`No`/`Close` strings,
+  not GTK's localized stock labels.
+- **`VWindow` `@destroy` is not a GTK signal.** `Gtk.Widget::destroy` is `when=cleanup` /
+  `no-hooks` on GTK 4.24 and cannot be connected. `VWindow` emits `@destroy` on unmount and from
+  its exposed `destroy()` method; destroying the raw `.widget` directly cannot be observed.
+- **Close-request return convention.** GTK uses `true` to keep a window open. `VWindow` also
+  treats an explicit `false` as cancel (the wave 3 Vue convention) and treats `undefined` as
+  "allow the default close". The handler always returns a boolean, avoiding node-gtk's
+  `Cannot convert value "undefined" to type gboolean` error.
+- **`VAssistant` current page.** `Gtk.Assistant:current-page` has no usable property notification
+  on 4.24; `v-model:current-page` is driven from `::prepare`. Removed pages leave GTK's internal
+  `GtkStack` parented until the subtree is collected, but disappear from `getNthPage()`.
+- **`VShortcutsWindow` is not wrapped.** The window is only a shell; its content is
+  `ShortcutsSection`/`ShortcutsGroup` (internal display parts) and non-widget `Gtk.Shortcut`
+  resources. Wrapping those would violate the wave 3 rule against wrapping internal parts, so the
+  raw `gtk-shortcuts-window` element remains the escape hatch.
+- **Portal and GtkBuildable behaviour.** `Gtk.FileDialog` still depends on the desktop portal/D-Bus.
+  `GtkBuildable` XML, custom GObject properties and symbol props remain unsupported.
+- **Deprecated wrappers.** `Gtk.Dialog`, `Gtk.MessageDialog`, `Gtk.FileChooserDialog`,
+  `Gtk.FileChooserNative`, `Gtk.ColorChooserDialog`, `Gtk.FontChooserDialog`,
+  `Gtk.AppChooserDialog` and `Gtk.Assistant` are deprecated since GTK 4.10. The wrappers work on
+  4.24 and are documented compatibility surfaces. GTK 4.24 has no `close-response` signal on
+  `Gtk.MessageDialog`; `VMessageDialog` synthesizes `@close-response` from
+  `response == CLOSE | DELETE_EVENT`.
+
 ## Imperative escape hatch
 
 `.widget` on a component ref and `vShow` still work against the raw GTK object. For any GTK API that

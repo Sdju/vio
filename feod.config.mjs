@@ -23,5 +23,6 @@ export default {
     "packages/vio/examples/generic": {},
     "packages/vio/examples/controls": {},
     "packages/vio/examples/data": {},
+    "packages/vio/examples/dialogs": {},
   },
 };

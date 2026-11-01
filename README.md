@@ -17,7 +17,7 @@ npm install @zede/vio node-gtk
 node --import @zede/vio/register main.ts
 ```
 
-See the [package guide](packages/vio/README.md) for a complete counter application, widget API and supported Vue features, [declarative layer limitations](docs/limitations.md) for the limits of the widget tree, and [generic Gtk widgets](docs/widgets.md) for introspection-based `gtk-*` resolution.
+See the [package guide](packages/vio/README.md) for a complete counter application, widget API and supported Vue features, [declarative layer limitations](docs/limitations.md) for the limits of the widget tree, [generic Gtk widgets](docs/widgets.md) for introspection-based `gtk-*` resolution, and [windows and dialogs](docs/dialogs.md) for `VWindow`, `VApplicationWindow`, the synchronous dialog family and Promise-based `VAlertDialog`/`VFileDialog`/`VColorDialog`/`VFontDialog`.
 
 ## Development
 

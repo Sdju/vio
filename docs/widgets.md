@@ -96,11 +96,52 @@ Only these classes get `single` and accept one child through `setChild()`:
 | `page-setup-unix-dialog` | `Gtk.PageSetupUnixDialog` |
 
 Every entry above was verified on GTK 4.24 by creating the widget and checking that
-`setChild(label)` accepts the label. Most classes parent it directly; `menu-button`, `popover`,
-`popover-menu` and `emoji-chooser` place it in GTK's internal content container, but `getChild()`
-returns it and the widget is an ancestor of the label. `Gtk.DragIcon` is **not** in the list:
+`setChild(label)` accepts the label. The test now asserts `child.getParent() === parent` for every
+class in the table **except** four real exceptions, which use a private GTK content container:
+
+| Exception       | Intermediate parent | Reason                                                           |
+| --------------- | ------------------- | ---------------------------------------------------------------- |
+| `menu-button`   | `GtkGizmo`          | `GtkMenuButton::setChild()` installs the content in its Gizmo    |
+| `popover`       | `GtkPopoverContent` | `setChild()` installs the content in the private popover content |
+| `popover-menu`  | `GtkPopoverContent` | inherits Popover's private content container                     |
+| `emoji-chooser` | `GtkPopoverContent` | inherits Popover's private content container                     |
+
+For those four the test asserts `getParent() !== parent` **and** that the parent is still an
+ancestor; the old soft `rootOf()` check was removed. `Gtk.DragIcon` is **not** in the list:
 `setChild()` realizes the icon and crashes without a drag surface. `Gtk.ScaleButton` has no
 `setChild()` method at all. Neither class is inferred by method probing.
+
+### Wave 3: windows and dialogs
+
+Wave 3 registers explicit `vio-*` types at the end of `getWidgetTypes()`, leaving the order of all
+wave 1 and wave 2 types unchanged:
+
+| Explicit type                | Component              | Native class              | Notes                           |
+| ---------------------------- | ---------------------- | ------------------------- | ------------------------------- |
+| `vio-application-window`     | `VApplicationWindow`   | `Gtk.ApplicationWindow`   | content + `role="titlebar"`     |
+| `vio-assistant`              | `VAssistant`           | `Gtk.Assistant`           | pages are role children         |
+| `vio-dialog`                 | `VDialog`              | `Gtk.Dialog`              | `#content` → `getContentArea()` |
+| `vio-message-dialog`         | `VMessageDialog`       | `Gtk.MessageDialog`       | no widget children              |
+| `vio-file-chooser-dialog`    | `VFileChooserDialog`   | `Gtk.FileChooserDialog`   | no widget children              |
+| `vio-color-chooser-dialog`   | `VColorChooserDialog`  | `Gtk.ColorChooserDialog`  | no widget children              |
+| `vio-font-chooser-dialog`    | `VFontChooserDialog`   | `Gtk.FontChooserDialog`   | no widget children              |
+| `vio-print-unix-dialog`      | `VPrintUnixDialog`     | `Gtk.PrintUnixDialog`     | no widget children              |
+| `vio-page-setup-unix-dialog` | `VPageSetupUnixDialog` | `Gtk.PageSetupUnixDialog` | no widget children              |
+| `vio-about-dialog`           | `VAboutDialog`         | `Gtk.AboutDialog`         | no widget children              |
+
+`VFileChooserNative`, `VAlertDialog`, `VFileDialog`, `VColorDialog`, `VFontDialog` and
+`VAppChooserDialog` are null-rendering controllers; they do not register element types. The raw
+`gtk-*` allowlist entries for the same classes (`dialog`, `message-dialog`, `about-dialog`,
+`file-chooser-dialog`, …) keep their wave 1 `single` behavior; the `vio-*` types own the richer
+placement. See [`dialogs.md`](dialogs.md).
+
+Deprecations: `Gtk.Dialog`, `Gtk.MessageDialog`, `Gtk.FileChooserDialog`,
+`Gtk.FileChooserNative`, `Gtk.ColorChooserDialog`, `Gtk.FontChooserDialog`,
+`Gtk.AppChooserDialog` and `Gtk.Assistant` are deprecated since GTK 4.10. The wave 3 wrappers stay
+functional on 4.24 and point at `Gtk.AlertDialog`, `Gtk.FileDialog`, `Gtk.ColorDialog` and
+`Gtk.FontDialog` for new code. `Gtk.ShortcutsWindow` is intentionally not wrapped; its content is
+built from internal `ShortcutsSection`/`ShortcutsGroup` parts and non-widget `Gtk.Shortcut`
+resources.
 
 `menu-button` and `expander` also have explicit registrations in `controls.ts` so `VMenuButton` can
 route `#popover` to `setPopover()` and `VExpander` can route `#label` to `setLabelWidget()`. Their

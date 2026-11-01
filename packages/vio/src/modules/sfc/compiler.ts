@@ -27,6 +27,7 @@ const modelComponents = new Set([
   "VColumnView",
   "VGridView",
   "VIconView",
+  "VDialog",
 ]);
 
 /** `gtk-*` tags are native elements, not components that Vue must resolve. */

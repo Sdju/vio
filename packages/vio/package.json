@@ -51,10 +51,11 @@
     "demo": "node --import @zede/vio/register examples/counter/app/entry.ts",
     "demo:showcase": "node --import @zede/vio/register examples/showcase/app/entry.ts",
     "gtk:types": "node-gtk generate-types Gtk-4.0 --no-docs",
-    "test:gtk": "node --import @zede/vio/register tests/gtk.test.mjs && node --import @zede/vio/register tests/containers.test.mjs && node --import @zede/vio/register tests/widgets-generic.test.mjs && node --import @zede/vio/register tests/controls.test.mjs && node --import @zede/vio/register tests/data.test.mjs",
+    "test:gtk": "node --import @zede/vio/register tests/gtk.test.mjs && node --import @zede/vio/register tests/containers.test.mjs && node --import @zede/vio/register tests/widgets-generic.test.mjs && node --import @zede/vio/register tests/controls.test.mjs && node --import @zede/vio/register tests/data.test.mjs && node --import @zede/vio/register tests/dialogs.test.mjs",
     "demo:generic": "node --import @zede/vio/register examples/generic/app/entry.ts",
     "demo:controls": "node --import @zede/vio/register examples/controls/app/entry.ts",
     "demo:data": "node --import @zede/vio/register examples/data/app/entry.ts",
+    "demo:dialogs": "node --import @zede/vio/register examples/dialogs/app/entry.ts",
     "typecheck": "tsc --noEmit",
     "prepack": "vp run build"
   },

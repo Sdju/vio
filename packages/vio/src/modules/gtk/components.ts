@@ -18,7 +18,6 @@ export function defineWidgetComponent(name: string, type: string) {
     },
   });
 }
-export const VWindow = defineWidgetComponent("VWindow", "window");
 export const VBox = defineWidgetComponent("VBox", "box");
 export const VLabel = defineWidgetComponent("VLabel", "label");
 export const VButton = defineWidgetComponent("VButton", "button");

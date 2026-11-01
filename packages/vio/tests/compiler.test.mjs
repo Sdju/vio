@@ -77,6 +77,17 @@ await test("wave 2 data components accept v-model and v-model:argument", () => {
   assert.match(code, /onUpdate:selected/);
 });
 
+await test("wave 3 VDialog accepts v-model:visible", () => {
+  const code = compileSfc(
+    `<script setup lang="ts">
+    import { ref, VDialog } from "@zede/vio";
+    const open = ref<boolean>(false);
+    </script><template><VDialog v-model:visible="open"/></template>`,
+    "dialog.vue",
+  );
+  assert.match(code, /onUpdate:visible/);
+});
+
 await test("unsupported DOM semantics fail with actionable diagnostics", () => {
   assert.throws(
     () => compileSfc('<template><gtk-label v-html="text"/></template>', "bad.vue"),
