@@ -102,6 +102,21 @@ await test("wave 4 media and value components accept v-model:argument", () => {
   assert.match(code, /onUpdate:playing/);
 });
 
+await test("wave 5 small components accept v-model:argument", () => {
+  const code = compileSfc(
+    `<script setup lang="ts">
+    import { ref, VRevealer, VScrollbar, VScaleButton, VVolumeButton, VLockButton, VColorChooserWidget, VFontChooserWidget } from "@zede/vio";
+    const revealed = ref(false); const value = ref(0); const volume = ref(0.5); const permission = ref(); const rgba = ref(); const font = ref("Sans 12");
+    </script><template><VRevealer v-model:revealed="revealed"/><VScrollbar v-model:value="value"/><VScaleButton v-model:value="value"/><VVolumeButton v-model:value="volume"/><VLockButton v-model:permission="permission"/><VColorChooserWidget v-model:rgba="rgba"/><VFontChooserWidget v-model:font="font"/></template>`,
+    "small.vue",
+  );
+  assert.match(code, /onUpdate:revealed/);
+  assert.match(code, /onUpdate:value/);
+  assert.match(code, /onUpdate:permission/);
+  assert.match(code, /onUpdate:rgba/);
+  assert.match(code, /onUpdate:font/);
+});
+
 await test("unsupported DOM semantics fail with actionable diagnostics", () => {
   assert.throws(
     () => compileSfc('<template><gtk-label v-html="text"/></template>', "bad.vue"),

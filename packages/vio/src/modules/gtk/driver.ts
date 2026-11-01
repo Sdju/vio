@@ -246,6 +246,12 @@ const nullSetters: Record<string, string> = {
   paintable: "setPaintable",
   "media-stream": "setMediaStream",
   dialog: "setDialog",
+  permission: "setPermission",
+  popover: "setPopover",
+  "list-row": "setListRow",
+  adjustment: "setAdjustment",
+  "label-widget": "setLabelWidget",
+  stylesheet: "setStylesheet",
 };
 const metadataProps = new Set(["role", "tab-label", "page", "slot-container"]);
 

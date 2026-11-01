@@ -25,5 +25,6 @@ export default {
     "packages/vio/examples/data": {},
     "packages/vio/examples/dialogs": {},
     "packages/vio/examples/media": {},
+    "packages/vio/examples/small": {},
   },
 };

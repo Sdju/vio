@@ -358,6 +358,56 @@ are in [`media.md`](media.md). The non-obvious limits:
   `selected` value to a `Gtk.NoSelection` called `setSelected()` on an object that has no such
   method. No-selection views now ignore `selected`; the selection helpers expose `-1` for them.
 
+## Wave 5: small and special widgets
+
+The components live in `packages/vio/src/modules/gtk/small.ts`; the API table, examples and the full
+deviation list are in [`small.md`](small.md). The non-obvious limits:
+
+- **`GtkViewport` has no `scroll-to` signal on GTK 4.24.** The wave 5 brief described a GTK 3 API.
+  `VViewport` exposes `scrollTo(descendant, scrollInfo)`; connecting `scroll-to` natively fails with
+  `Signal name is invalid`, and the test asserts that failure.
+- **`GtkRevealer` has no `revealed-changed` signal.** `VRevealer` synthesizes `@revealed-changed`
+  from `notify::reveal-child` and keeps the native `@notify::child-revealed` notification for the
+  completed transition. `v-model:revealed` writes `reveal-child`.
+- **`GtkScrollbar` has no `value` property and no `value-changed` signal.** Both belong to
+  `Gtk.Adjustment`. `VScrollbar` creates an adjustment from `min`/`max`/`step` and emits
+  `v-model:value`/`@value-changed` from it.
+- **`GtkAspectFrame:shrink-child` was removed in 4.24.** `VAspectFrame` accepts the prop and
+  approximates it with `hexpand`/`vexpand`. Default-slot children are placed in an internal vertical
+  `Gtk.Box`, because the native class is a single-child bin.
+- **`GtkTreeExpander:indent-for-expander` was renamed to `indent-for-depth`.** Only the native name
+  is written; `indent-for-expander` is accepted as a compatibility alias.
+- **`GtkSvgWidget` does not have `file`/`filename`/`paintable` properties on GTK 4.24.** Its real
+  surface is `resource`, `state`, `stylesheet`, the read-only `svg` (`Gtk.Svg`) and
+  `loadFromBytes()`. `VSvgWidget` reads local files into `GLib.Bytes` and calls `loadFromBytes`;
+  `bytes` accepts `GLib.Bytes`, `Uint8Array` or `number[]`. A missing file sets `handle.error` and
+  is never passed to GTK. `handle.svg` is aliased as `handle.paintable`, but there is no
+  `notify::paintable` property to connect.
+- **`GtkWindowControls:decorative` was removed in 4.24.** `VWindowControls` accepts the prop and maps
+  `false` to `visible = false`; `side`, `decoration-layout` and `use-native-controls` are native.
+- **`VEmojiChooser` is a popover and must be parented.** `popup()` returns `false` and does nothing
+  when the chooser has no parent, instead of letting GTK log
+  `Gtk-WARNING: Calling gtk_widget_realize() on a widget that isn't inside a toplevel window`.
+  `@emoji-picked` forwards the emoji string.
+- **`Gtk.PopoverBin` popup is only warning-free through native UI gestures.** Calling the native
+  `popup()` on a manually built `VPopoverBin` can log `Gtk-CRITICAL: gtk_widget_is_ancestor`
+  depending on GTK's internal state; the component therefore exposes only the child/popover split
+  and leaves `.widget.popup()`/`.widget.popdown()` as the imperative escape hatch.
+- **`GtkColorChooserWidget` emits `notify::rgba` twice for one `setRgba()`.** `v-model:rgba` is
+  therefore driven by `color-activated`, which fires once and carries the `Gdk.RGBA`.
+- **`GtkFontChooserWidget` font readback is empty on 4.24.1.** `getFont()` returns `null` and
+  `font`/`font-desc` stay empty even after realization. `VFontChooserWidget` applies `font`/`font-desc`
+  with setters, but `v-model:font` is driven by `font-activated` (the font name string).
+- **`GtkAppChooserButton`/`Gtk.AppChooserWidget` are not wrapped.** `content-type` is
+  construct-only; the driver creates widgets with no constructor properties and patching it logs
+  `GLib-GObject-CRITICAL: construct property "content-type" … can't be set after construction`.
+  Wrapping them would need a custom creation path outside `WidgetDefinition`.
+- **Standalone scrollbar theme warning.** On this host, GTK 4.24.1 logs
+  `GtkGizmo … (slider) reported min height -2` for a `Gtk.Scrollbar` that is not inside a scrolled
+  window, regardless of vio. The `demo:small` window adds a non-scoped CSS rule
+  `scrollbar slider { min-width: 8px; min-height: 8px; }`. The wrapper does not install global CSS,
+  and the test mounts scrollbars without a window, so the suite stays warning-free.
+
 ## Imperative escape hatch
 
 `.widget` on a component ref and `vShow` still work against the raw GTK object. For any GTK API that

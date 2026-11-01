@@ -35,6 +35,13 @@ const modelComponents = new Set([
   "VColorDialogButton",
   "VFontDialogButton",
   "VCalendar",
+  "VRevealer",
+  "VScrollbar",
+  "VScaleButton",
+  "VVolumeButton",
+  "VLockButton",
+  "VColorChooserWidget",
+  "VFontChooserWidget",
 ]);
 
 /** `gtk-*` tags are native elements, not components that Vue must resolve. */

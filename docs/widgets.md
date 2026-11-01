@@ -177,6 +177,26 @@ from render, exactly like `VListModel`. Wave 4 details and deviations are in
 route `#popover` to `setPopover()` and `VExpander` can route `#label` to `setLabelWidget()`. Their
 generic `gtk-*` elements keep the same one-child behavior described here.
 
+### Wave 5: small and special widgets
+
+Wave 5 adds three explicit `vio-*` types for containers whose placement is not a plain `setChild()`;
+the remaining components use the introspected classes directly. `getWidgetTypes()` gains only the
+explicit names, so wave 1–4 order and content are unchanged.
+
+| Explicit type      | Component      | Native class      | Placement                                                      |
+| ------------------ | -------------- | ----------------- | -------------------------------------------------------------- |
+| `vio-frame`        | `VFrame`       | `Gtk.Frame`       | default child → `setChild`; `#label-widget` → `setLabelWidget` |
+| `vio-aspect-frame` | `VAspectFrame` | `Gtk.AspectFrame` | children go into an internal vertical `Gtk.Box` child          |
+| `vio-popover-bin`  | `VPopoverBin`  | `Gtk.PopoverBin`  | default child → `setChild`; `#popover` → `setPopover`          |
+
+Wave 5 leaf components resolve their classes through introspection: `viewport`, `revealer`,
+`scrollbar`, `scale-button`, `volume-button`, `lock-button`, `emoji-chooser`, `shortcut-label`,
+`tree-expander`, `svg-widget`, `window-controls`, `window-handle`, `color-chooser-widget`,
+`font-chooser-widget` and `graphics-offload`. The generic `gtk-frame`, `gtk-aspect-frame`,
+`gtk-viewport` and `gtk-revealer` elements keep the wave 1 `single` allowlist behavior; use the
+`V*` components when a label slot, a revealer model or the aspect-frame box behavior is needed.
+Details and deviations: [`small.md`](small.md).
+
 ### Wave 2: what was verified and deliberately not added
 
 The wave 2 classes were probed on GTK 4.24 before touching the allowlist. No new class was added:
