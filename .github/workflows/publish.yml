@@ -33,6 +33,10 @@ jobs:
     env:
       GDK_BACKEND: x11
       GSK_RENDERER: cairo
+      # The headless runner has no org.a11y.Bus service, so GTK logs a routine
+      # "Unable to acquire the address of the accessibility bus" Gtk-WARNING that
+      # would fail the warning-free GTK checks. Tests do not exercise a11y.
+      GTK_A11Y: none
     steps:
       - uses: actions/checkout@v7
       - name: Install GTK dependencies

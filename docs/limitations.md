@@ -709,6 +709,10 @@ in 4.14, so it works there without a newer class.
 behavior is verified on GTK **4.24.1**. The shared helper for both checks lives in
 `packages/vio/src/modules/gtk/gtk-version.ts`.
 
+The GTK tests assert that no `Gtk-WARNING`/`Gtk-CRITICAL` is printed, so a headless environment
+without an accessibility bus needs `GTK_A11Y=none` (CI sets it in `publish.yml`); on a desktop with
+`org.a11y.Bus` it is not required.
+
 ## Imperative escape hatch
 
 `.widget` on a component ref and `vShow` still work against the raw GTK object. For any GTK API that
