@@ -5,9 +5,9 @@ express: two-way bindings, role slots with dedicated GTK setters, and a few prop
 adjustment or a native model. They are thin wrappers over the existing renderer; no reconciler
 mechanics are specific to them.
 
-`v-model` in SFC templates is allowed only for the components listed here plus `VEntry`. Any other
-tag still fails at compile time with `vio: v-model is supported on VEntry and the V* control
-components`.
+`v-model` in SFC templates is allowed only for the components listed here, `VEntry`, and the wave 2
+data components in [`data.md`](data.md). Any other tag still fails at compile time with
+`vio: v-model is supported on VEntry and the V* control components`.
 
 ## Components
 

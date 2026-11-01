@@ -22,5 +22,6 @@ export default {
     "packages/vio/examples/showcase": {},
     "packages/vio/examples/generic": {},
     "packages/vio/examples/controls": {},
+    "packages/vio/examples/data": {},
   },
 };

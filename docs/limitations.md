@@ -172,6 +172,39 @@ These are real today and are not planned as renderer changes:
 - **Wave 1 control boundaries.** `Gtk.DragIcon` stays out of the introspected `single` allowlist:
   `setChild()` realizes the icon and crashes without a drag surface, so it cannot be verified
   safely. `Gtk.ScaleButton` has no `setChild()` method. Both remain `none`.
+- **Wave 2 collection views and factories.** `VColumnView` / `VGridView` take a `Gio.ListModel` and
+  wrap it in a selection; `Gio.ListStore` itself is not a selection model. Columns are appended in
+  declaration order and a later column goes to the end; reordering columns is not implemented.
+  Each cell is rendered into a `Gtk.Box` host owned by the `Gtk.ListItem`, and the `#cell` / `#item`
+  root must be a single GTK widget. On unmount the column factory and the view model are cleared, so
+  JS callbacks do not stay referenced by live GObjects.
+- **`VIconView` is legacy.** `Gtk.IconView:model` is a `Gtk.TreeModel`, not a `Gio.ListModel`, and
+  the widget paints cell renderers from model columns. There is no item factory and no widget cells,
+  so `#item` throws. `markup-column` (and the raw `.widget`) are the supported surface; use
+  `VGridView` for widget cells.
+- **`Gtk.TreeListModel` is not a `Gtk.TreeModel`.** On GTK 4.24 it implements only `Gio.ListModel`
+  (`GObject.typeIsA` is false for `GtkTreeModel`), so `createTreeListModel()` feeds a `VColumnView`
+  through a selection, not `VTreeView`. `VTreeView` keeps taking a real `Gtk.TreeModel`.
+- **Deprecated upstream.** `Gtk.TreeView`, `Gtk.Statusbar`, `Gtk.InfoBar` and `Gtk.IconView` are
+  deprecated since GTK 4.10. The wrappers work on 4.24 and are documented as compatibility
+  surfaces; new code should prefer `VColumnView`, `VGridView` and a regular `VBox`.
+- **`VSearchEntry#search` has no native counterpart.** GTK4 removed `GtkSearchEntry::search`, and
+  `search-changed` applies GTK's own 150 ms delay. The component proxies the immediate
+  `GtkEditable::changed` signal (coalescing a synchronous delete/insert burst in a microtask), so
+  `@search` is undebounced; debouncing is the caller's responsibility.
+- **`VSearchBar` is outside the SFC `v-model` allowlist.** `search-mode-enabled` is two-way through
+  `:search-mode-enabled` + `@update:search-mode-enabled`; `v-model:search-mode-enabled` is rejected
+  at compile time. The wave 2 allowlist entries are only the components with a real `v-model`
+  (`VTextView`, `VEditableLabel`, `VSearchEntry`, `VColumnView`, `VGridView`, `VIconView`).
+- **`VInfoBar` action area.** `Gtk.InfoBar.addActionWidget()` accepts only activatable widgets, so
+  `#action` is routed widget-by-widget and cannot be a generic multi-widget box. Use one button (or
+  another activatable widget) per action item.
+- **`VTextView` batches buffer signals.** `Gtk.TextBuffer.setText()` emits a delete/insert pair
+  synchronously; the component publishes the final text in a microtask so `v-model:text` does not
+  see the intermediate empty state. This is a microtask, not a timer-based debounce.
+- **`VEditableLabel` equality guard.** The component writes `text` only when it differs from
+  `getText()`. An external `setText()` with the same value still emits `notify::text`; the handler
+  compares before emitting `update:text`, so an equal prop update does not move the caret.
 - **`v-model` allowlist in SFC.** The compiler accepts `v-model` only for `VEntry` and the control
   components in `docs/controls.md`. A third-party component that declares `modelValue` still needs
   an explicit compiler allowlist entry; use GTK properties and signals until then.

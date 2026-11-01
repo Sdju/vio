@@ -21,6 +21,12 @@ const modelComponents = new Set([
   "VDropDown",
   "VComboBoxText",
   "VPasswordEntry",
+  "VTextView",
+  "VEditableLabel",
+  "VSearchEntry",
+  "VColumnView",
+  "VGridView",
+  "VIconView",
 ]);
 
 /** `gtk-*` tags are native elements, not components that Vue must resolve. */

@@ -20,7 +20,7 @@ container element; placement of slot content is described by `WidgetDefinition.i
 | `VListModel`    | none (resource) | `items: string[]`, `selected: number`; exposes `store`/`selection`/`factory` |
 
 Every container exposes a component ref with `.element` (the `VioElement`) and `.widget` (the raw GTK
-object).
+object). Wave 2 collection views, text widgets and panels are documented in [`data.md`](data.md).
 
 ```vue
 <VWindow>

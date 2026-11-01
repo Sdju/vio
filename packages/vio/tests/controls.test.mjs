@@ -86,6 +86,13 @@ const allowlisted = [
   "page-setup-unix-dialog",
 ];
 
+/**
+ * These four put `setChild()` content into an internal container (`GtkGizmo` for MenuButton,
+ * `GtkPopoverContent` for Popover/PopoverMenu/EmojiChooser), so `getParent()` is not the widget
+ * itself. Every other allowlisted class parents the child directly and is asserted strictly.
+ */
+const internalContentParents = new Set(["menu-button", "popover", "popover-menu", "emoji-chooser"]);
+
 await test("wave 1 single allowlist classes accept a child through setChild()", async () => {
   for (const type of allowlisted) {
     const definition = resolveIntrospected(type);
@@ -97,7 +104,9 @@ await test("wave 1 single allowlist classes accept a child through setChild()", 
     try {
       const child = parent.getChild?.();
       assert.ok(child instanceof Gtk.Label, `${type} installs the child widget`);
-      assert.ok(contains(parent, child), `${type} owns the child in its GTK hierarchy`);
+      if (internalContentParents.has(type))
+        assert.ok(contains(parent, child), `${type} owns the child in its GTK hierarchy`);
+      else assert.equal(child.getParent(), parent, `${type} parents the child directly`);
     } finally {
       app.unmount();
     }

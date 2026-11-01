@@ -1,6 +1,4 @@
 import Gtk from "gi:Gtk-4.0";
-import Gio from "gi:Gio-2.0";
-import { getGType } from "node-gtk";
 import {
   Comment,
   Fragment,
@@ -111,7 +109,7 @@ function isInside(child: object, ancestor: object): boolean {
  * release its single child so a keyed removal does not leave user widgets parented to a detached
  * box. Ordinary role children are left untouched.
  */
-function releaseSlot(node: VioNode, widget: InstanceType<typeof Gtk.Widget>): void {
+export function releaseSlot(node: VioNode, widget: InstanceType<typeof Gtk.Widget>): void {
   if (node.props["slot-container"] !== true || !(widget instanceof Gtk.Box)) return;
   for (let child = widget.getFirstChild(); child; child = widget.getFirstChild())
     widget.remove(child);
@@ -145,7 +143,10 @@ function slotWrapper(role: string, item: VNodeChild, index: number): VNode {
   return h("box", { role, key, "slot-container": true }, [item]);
 }
 
-const roleWidgets = (parent: VioElement, role: string): Array<InstanceType<typeof Gtk.Widget>> =>
+export const roleWidgets = (
+  parent: VioElement,
+  role: string,
+): Array<InstanceType<typeof Gtk.Widget>> =>
   parent.children
     .filter((child) => child.widget && child.props.role === role)
     .map((child) => child.widget as InstanceType<typeof Gtk.Widget>);
@@ -291,40 +292,49 @@ define("vio-center-box", {
   },
 });
 
-interface HeaderRoles {
+export interface PackedRoleState {
   start: Array<InstanceType<typeof Gtk.Widget>>;
   end: Array<InstanceType<typeof Gtk.Widget>>;
 }
-const headerRoles = new WeakMap<object, HeaderRoles>();
-function headerState(bar: object): HeaderRoles {
-  let state = headerRoles.get(bar);
+const packedRoles = new WeakMap<object, PackedRoleState>();
+/** Per-container bookkeeping for containers that only expose `packStart` / `packEnd`. */
+export function packedRoleState(host: object): PackedRoleState {
+  let state = packedRoles.get(host);
   if (!state) {
     state = { start: [], end: [] };
-    headerRoles.set(bar, state);
+    packedRoles.set(host, state);
   }
   return state;
 }
 
 /**
- * Gtk.HeaderBar only exposes packStart/packEnd, with no insert-at-index. Rebuild the role group
- * from the VNode order; the widgets themselves are re-packed, so identity and CSS survive.
- * packEnd reverses its internal order, hence the reverse iteration for `#end`.
+ * `Gtk.HeaderBar` and `Gtk.ActionBar` only expose packStart/packEnd, with no insert-at-index.
+ * Rebuild the role group from the VNode order; the widgets themselves are re-packed, so identity
+ * and CSS survive. `packEnd` reverses its internal order, hence the reverse iteration for `#end`.
  */
-function repackHeaderRole(
-  bar: InstanceType<typeof Gtk.HeaderBar>,
+export function repackPackedRole(
+  host: InstanceType<typeof Gtk.Widget>,
+  state: PackedRoleState,
   role: "start" | "end",
   desired: Array<InstanceType<typeof Gtk.Widget>>,
+  pack: {
+    start: (widget: InstanceType<typeof Gtk.Widget>) => void;
+    end: (widget: InstanceType<typeof Gtk.Widget>) => void;
+  },
 ): void {
-  const state = headerState(bar);
-  for (const widget of state[role]) if (isInside(widget, bar)) bar.remove(widget);
+  // Both Gtk.HeaderBar and Gtk.ActionBar expose remove(); the base Gtk.Widget type does not.
+  const removable = host as unknown as {
+    remove(widget: InstanceType<typeof Gtk.Widget>): void;
+  };
+  for (const widget of state[role]) if (isInside(widget, host)) removable.remove(widget);
   state[role] = [];
   if (role === "start") {
     for (const widget of desired) {
-      bar.packStart(widget);
+      pack.start(widget);
       state.start.push(widget);
     }
   } else {
-    for (let index = desired.length - 1; index >= 0; index--) bar.packEnd(desired[index]!);
+    for (let index = desired.length - 1; index >= 0; index--) pack.end(desired[index]!);
     state.end.push(...desired);
   }
 }
@@ -338,7 +348,13 @@ define("vio-header-bar", {
       if (bar.getTitleWidget() !== child) bar.setTitleWidget(child);
     } else if (role === "start" || role === "end") {
       const desired = roleWidgets(parent, role);
-      repackHeaderRole(bar, role, desired.includes(child) ? desired : [...desired, child]);
+      repackPackedRole(
+        bar,
+        packedRoleState(bar),
+        role,
+        desired.includes(child) ? desired : [...desired, child],
+        { start: (widget) => bar.packStart(widget), end: (widget) => bar.packEnd(widget) },
+      );
     } else {
       throw new Error(`vio: VHeaderBar children must use the #start, #end or #title slot`);
     }
@@ -349,7 +365,7 @@ define("vio-header-bar", {
       bar.setTitleWidget(null);
       releaseSlot(node, child);
     } else if (role === "start" || role === "end") {
-      const state = headerState(bar);
+      const state = packedRoleState(bar);
       state[role] = state[role].filter((widget) => widget !== child);
       if (isInside(child, bar)) bar.remove(child);
       releaseSlot(node, child);
@@ -558,60 +574,3 @@ export const VFixed = defineContainerComponent("VFixed", "vio-fixed", ({ attrs, 
 );
 
 export const VListView = defineWidgetComponent("VListView", "list-view");
-
-export interface ListModelHandle {
-  readonly store: InstanceType<typeof Gio.ListStore>;
-  readonly selection: InstanceType<typeof Gtk.SingleSelection>;
-  readonly factory: InstanceType<typeof Gtk.SignalListItemFactory>;
-}
-
-/**
- * Declarative `Gio.ListStore` + `Gtk.SingleSelection` + `Gtk.SignalListItemFactory`.
- * Renders nothing; place it next to a view and pass `model.selection` / `model.factory`.
- */
-export const VListModel = defineComponent({
-  name: "VListModel",
-  props: {
-    items: { type: Array as PropType<string[]>, default: () => [] },
-    selected: { type: Number, default: 0 },
-  },
-  setup(props, { expose }) {
-    const store = Gio.ListStore.new(getGType(Gtk.StringObject));
-    const selection = new Gtk.SingleSelection({
-      model: store,
-      autoselect: false,
-      canUnselect: true,
-    });
-    const factory = new Gtk.SignalListItemFactory();
-    factory.on("setup", (item: InstanceType<typeof Gtk.ListItem>) => {
-      item.setChild(new Gtk.Label({ xalign: 0 }));
-    });
-    factory.on("bind", (item: InstanceType<typeof Gtk.ListItem>) => {
-      const child = item.getChild();
-      const object = item.getItem();
-      if (child && object)
-        (child as InstanceType<typeof Gtk.Label>).setLabel(
-          (object as InstanceType<typeof Gtk.StringObject>).getString(),
-        );
-    });
-    const sync = (items: string[] | undefined) => {
-      store.splice(
-        0,
-        store.getNItems(),
-        (items ?? []).map((value) => Gtk.StringObject.new(value)),
-      );
-    };
-    sync(props.items);
-    watch(() => props.items, sync, { deep: true });
-    watch(
-      () => props.selected,
-      (index) => {
-        if (store.getNItems() === 0) return;
-        selection.setSelected(Math.max(0, Math.min(Number(index ?? 0), store.getNItems() - 1)));
-      },
-      { immediate: true },
-    );
-    expose({ store, selection, factory } satisfies ListModelHandle);
-    return () => null;
-  },
-});

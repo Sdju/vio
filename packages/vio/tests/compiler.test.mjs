@@ -65,6 +65,18 @@ await test("control components accept v-model and v-model:argument", () => {
   assert.match(code, /onUpdate:value/);
 });
 
+await test("wave 2 data components accept v-model and v-model:argument", () => {
+  const code = compileSfc(
+    `<script setup lang="ts">
+    import { ref, VColumnView, VSearchEntry, VTextView } from "@zede/vio";
+    const text = ref<string>(""); const selected = ref<number>(0);
+    </script><template><VTextView v-model:text="text"/><VSearchEntry v-model:text="text"/><VColumnView v-model:selected="selected"/></template>`,
+    "data.vue",
+  );
+  assert.match(code, /onUpdate:text/);
+  assert.match(code, /onUpdate:selected/);
+});
+
 await test("unsupported DOM semantics fail with actionable diagnostics", () => {
   assert.throws(
     () => compileSfc('<template><gtk-label v-html="text"/></template>', "bad.vue"),

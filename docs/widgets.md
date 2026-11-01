@@ -106,6 +106,39 @@ returns it and the widget is an ancestor of the label. `Gtk.DragIcon` is **not**
 route `#popover` to `setPopover()` and `VExpander` can route `#label` to `setLabelWidget()`. Their
 generic `gtk-*` elements keep the same one-child behavior described here.
 
+### Wave 2: what was verified and deliberately not added
+
+The wave 2 classes were probed on GTK 4.24 before touching the allowlist. No new class was added:
+
+| Class           | Child API                                       | Allowlist decision                              |
+| --------------- | ----------------------------------------------- | ----------------------------------------------- |
+| `SearchBar`     | `setChild()`                                    | already listed (before wave 2)                  |
+| `ActionBar`     | `packStart()` / `packEnd()`                     | not `setChild`; `vio-action-bar` owns placement |
+| `InfoBar`       | `addChild()` / `addActionWidget()`              | not `setChild`; `vio-info-bar` owns placement   |
+| `Statusbar`     | none (`push()` adds text, not a widget)         | not a container; `VStatusbar` takes `messages`  |
+| `ColumnView`    | `appendColumn()` / `insertColumn()` add columns | not widget children; `#columns` is `none`       |
+| `GridView`      | `setFactory()` builds item widgets              | not a child slot; `#item` uses a factory        |
+| `IconView`      | `packStart()` adds cell renderers               | not widget children; `VIconView` is `none`      |
+| `TreeView`      | `appendColumn()` adds columns                   | not widget children; `VTreeView` is `none`      |
+| `TextView`      | `addChildAtAnchor()` is a text-overlay API      | not a child container; `VTextView` is `none`    |
+| `Inscription`   | none                                            | leaf; `VInscription` is `none`                  |
+| `EditableLabel` | none                                            | leaf; `VEditableLabel` is `none`                |
+| `SearchEntry`   | none                                            | leaf; `VSearchEntry` is `none`                  |
+
+Adding any of these to `singleChildTypes` would make a VNode child look like a valid child (or, for
+`ColumnView`/`TreeView`, like a column) and then fail or corrupt the model. Containers that need
+placement get an explicit `insertChild` / `removeChild` hook instead; see
+[`data.md`](data.md) for `VActionBar`, `VInfoBar` and the collection views.
+
+### Deprecated classes in wave 2
+
+- `Gtk.TreeView` and `Gtk.Statusbar` are deprecated since GTK 4.10. `VTreeView` is a thin
+  `Gtk.TreeModel` wrapper and `VStatusbar` exists for existing layouts; new code should use
+  `VColumnView` and a regular `VBox`.
+- `Gtk.InfoBar` and `Gtk.IconView` are deprecated since GTK 4.10 as well. They still work on 4.24;
+  `VInfoBar` and `VIconView` document the native API they expose. `VIconView` uses `Gtk.TreeModel`,
+  not `Gio.ListModel`, and cannot host widget cells.
+
 Every other introspected class is `none`. A widget child inserted into it throws
 `vio: '<type>' cannot contain children`; it is never silently ignored. A second child in a
 `single` container throws
