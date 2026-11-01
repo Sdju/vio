@@ -17,7 +17,7 @@ npm install @zede/vio node-gtk
 node --import @zede/vio/register main.ts
 ```
 
-See the [package guide](packages/vio/README.md) for a complete counter application, widget API and supported Vue features, and [declarative layer limitations](docs/limitations.md) for the limits of the widget tree.
+See the [package guide](packages/vio/README.md) for a complete counter application, widget API and supported Vue features, [declarative layer limitations](docs/limitations.md) for the limits of the widget tree, and [generic Gtk widgets](docs/widgets.md) for introspection-based `gtk-*` resolution.
 
 ## Development
 
@@ -47,6 +47,7 @@ packages/
 scripts/              # architecture, archive smoke test and release tooling
 docs/releasing.md     # npm OIDC setup and publishing
 docs/limitations.md   # declarative layer limits
+docs/widgets.md       # generic Gtk widgets from introspection
 .github/workflows/    # checks and manual publishing
 ```
 

@@ -1,5 +1,11 @@
 export * from "./components.ts";
 export * from "./containers.ts";
+export * from "./types.ts";
+export {
+  resolveIntrospected,
+  listIntrospectedWidgetTypes,
+  isIntrospectedType,
+} from "./introspected.ts";
 export {
   gtkDriver,
   installCss,
@@ -7,7 +13,7 @@ export {
   hasWidget,
   getWidgetDefinition,
   getWidgetTypes,
-  type WidgetDefinition,
   type ChildrenMode,
+  type WidgetDefinition,
   type Placement,
 } from "./driver.ts";

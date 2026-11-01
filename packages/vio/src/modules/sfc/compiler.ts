@@ -9,9 +9,17 @@ import { createHash } from "node:crypto";
 import { stripTypeScriptTypes } from "node:module";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 
+/** `gtk-*` tags are native elements, not components that Vue must resolve. */
+const isCustomElement = (tag: string) => tag.startsWith("gtk-");
+
 /** Compile SFCs for runtime-core rather than the DOM compiler/runtime. */
 export function compileSfc(source: string, filename: string): string {
-  const { descriptor, errors } = parse(source, { filename });
+  const { descriptor, errors } = parse(source, {
+    filename,
+    // The descriptor AST is reused by inline `<script setup>` compilation, so the parser must
+    // already classify `gtk-*` tags as elements instead of components.
+    templateParseOptions: { isCustomElement },
+  });
   if (errors.length) throw new Error(`vio: ${filename}: ${errors.map(String).join("\n")}`);
   if (
     descriptor.template?.src ||
@@ -41,7 +49,7 @@ export function compileSfc(source: string, filename: string): string {
   const compilerOptions: CompilerOptions = {
     runtimeModuleName: "@zede/vio",
     hoistStatic: false,
-    isCustomElement: (tag) => tag.startsWith("gtk-"),
+    isCustomElement,
     nodeTransforms: [
       (node) => {
         if (node.type !== 1) return;

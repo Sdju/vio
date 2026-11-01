@@ -33,6 +33,15 @@ await test("template-only and Options API SFCs receive a render function", () =>
   }
 });
 
+await test("script setup templates treat gtk-* tags as custom elements", () => {
+  const code = compileSfc(
+    '<script setup lang="ts">const day = 1</script><template><gtk-calendar :day="day"/></template>',
+    "generic.vue",
+  );
+  assert.doesNotMatch(code, /resolveComponent\("gtk-calendar"\)/);
+  assert.match(code, /createElementBlock\("gtk-calendar"/);
+});
+
 await test("scoped styles use GTK classes instead of DOM attributes and have lifecycle cleanup", () => {
   const code = compileSfc(
     '<template><gtk-label class="heading">hello</gtk-label></template><style scoped>.heading { font-size: 22px; }</style>',

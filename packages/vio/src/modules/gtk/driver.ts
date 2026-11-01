@@ -4,31 +4,17 @@ import Pango from "gi:Pango-1.0";
 import { normalizeClass, normalizeStyle } from "@vue/runtime-core";
 import { toKebab, type VioDriver, type VioElement, type VioNode } from "../renderer/index.ts";
 import type { NativeObject, Widget } from "../renderer/index.ts";
+import {
+  hasGtkClass,
+  introspectedTypeOf,
+  resolveIntrospected,
+  suggestIntrospectedTypes,
+} from "./introspected.ts";
+import type { ChildrenMode, WidgetDefinition } from "./types.ts";
 
-export type ChildrenMode = "none" | "box" | "single" | "list" | "grid" | "stack" | "text";
+export type { ChildrenMode, Placement, WidgetDefinition } from "./types.ts";
+
 const childrenModes = new Set<string>(["none", "box", "single", "list", "grid", "stack", "text"]);
-/** Everything a placement hook needs; `role` comes from `node.props.role`. */
-export interface Placement {
-  parent: VioElement;
-  parentWidget: InstanceType<typeof Gtk.Widget>;
-  child: InstanceType<typeof Gtk.Widget>;
-  node: VioNode;
-  /** `node.props.role`, or `null` when the child has no role marker. */
-  role: string | null;
-  /** Next sibling widget, unless the child has a role; role slots ignore anchors. */
-  before: InstanceType<typeof Gtk.Widget> | null;
-  /** Index among widget-backed, non-controller children of `parent`. */
-  index: number;
-}
-export interface WidgetDefinition {
-  create: () => object;
-  children?: ChildrenMode;
-  controller?: boolean;
-  /** Container-specific placement; runs before the `children` switch. */
-  insertChild?: (placement: Placement) => void;
-  /** Container-specific removal; must be safe to call more than once. */
-  removeChild?: (placement: Placement) => void;
-}
 /**
  * `KeepAlive` asks the renderer for a `div` storage container. A GTK tree has no DOM, so the
  * renderer maps that one internal name to a detached `Gtk.Box`; applications do not need to
@@ -79,7 +65,7 @@ const definitions = new Map<string, WidgetDefinition>([
   ["key-controller", { create: () => new Gtk.EventControllerKey(), controller: true }],
 ]);
 const lookup = (type: string): WidgetDefinition | undefined =>
-  definitions.get(type) ?? (type === "div" ? storageDefinition : undefined);
+  definitions.get(type) ?? (type === "div" ? storageDefinition : resolveIntrospected(type));
 
 /** Extend vio with an introspected GTK/Adwaita class without changing its reconciler. */
 export function registerWidget(type: string, definition: WidgetDefinition) {
@@ -168,19 +154,20 @@ const rootTypes: Array<[Function, string]> = [
 const definitionOf = (node: VioElement): WidgetDefinition | undefined => {
   if (node.kind !== "root") return lookup(node.type);
   if (node.mode) {
-    const named = definitions.get(node.mode);
+    const named = definitions.get(node.mode) ?? resolveIntrospected(node.mode);
     if (named) return named;
   }
   if (!node.widget) return undefined;
   for (const [type, name] of rootTypes)
     if (node.widget instanceof (type as new (...args: unknown[]) => object))
       return definitions.get(name);
-  return undefined;
+  const introspected = introspectedTypeOf(node.widget);
+  return introspected ? resolveIntrospected(introspected) : undefined;
 };
 const childMode = (node: VioElement): ChildrenMode => {
   if (node.kind !== "root") return lookup(node.type)?.children ?? "none";
   if (node.mode) {
-    const definition = definitions.get(node.mode);
+    const definition = definitions.get(node.mode) ?? resolveIntrospected(node.mode);
     if (definition) return definition.children ?? "none";
     if (childrenModes.has(node.mode)) return node.mode as ChildrenMode;
     throw new Error(`vio: unknown root child mode '${node.mode}'`);
@@ -280,10 +267,13 @@ export const gtkDriver: VioDriver = {
   },
   create(type) {
     const definition = lookup(type);
-    if (!definition)
+    if (!definition) {
+      if (hasGtkClass(type)) throw new Error(`vio: '${type}' is not a Gtk.Widget`);
+      const suggestions = suggestIntrospectedTypes(type);
       throw new Error(
-        `vio: unknown widget '${type}'; use a V* component, gtk-* element or registerWidget()`,
+        `vio: unknown widget '${type}'; no such Gtk class. Did you mean ${suggestions.join(", ")}?`,
       );
+    }
     return definition.create();
   },
   createText: (text) => new Gtk.Label({ label: text, xalign: 0 }),

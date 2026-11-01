@@ -11,7 +11,7 @@ GTK and node-gtk are not the limiting factor.
 ## ChildrenMode and placement hooks
 
 `ChildrenMode` is still a closed union: `none | box | single | list | grid | stack | text`
-(`packages/vio/src/modules/gtk/driver.ts`). A user extension still cannot add a new branch to the
+(`packages/vio/src/modules/gtk/types.ts`). A user extension still cannot add a new branch to the
 mode switch. Two things changed:
 
 1. `registerWidget()` now validates `children`. An unknown string throws
@@ -70,6 +70,10 @@ The hooks come with rules that container authors must follow:
 The components live in `packages/vio/src/modules/gtk/containers.ts` and are exported from
 `@zede/vio`. Details and examples: [`docs/containers.md`](containers.md).
 
+Introspected `gtk-*` widgets are a separate mechanism: they use an explicit allowlist for `single`
+children and default to `none`. See [`docs/widgets.md`](widgets.md) for the resolution rules, the
+child-mode table and the difference from the explicit registry.
+
 ### What remains impossible here
 
 - A new `ChildrenMode` **from user code** so that the built-in switch gains a branch. The switch is
@@ -99,7 +103,10 @@ Without an explicit mode the driver maps known GTK classes to registered definit
 
 So `createRoot(new Gtk.Notebook())`, `createRoot(new Gtk.Paned())` and
 `createRoot(new Gtk.FlowBox())` place children through the hooks instead of failing with
-`setChild is not a function`. Unknown classes keep the legacy `single` inference.
+`setChild is not a function`. Unknown classes are resolved through introspection first: the root
+uses the introspected definition, so `createRoot(new Gtk.Frame())` gets `single` and
+`createRoot(new Gtk.Calendar())` gets `none`. Only non-introspected classes keep the legacy `single`
+inference. See [`docs/widgets.md`](widgets.md#root-widgets).
 
 An explicit **unknown** mode string throws `vio: unknown root child mode '…'` when the first child
 is inserted. A `Gtk.Box` with no registered definition still falls back to `single`.

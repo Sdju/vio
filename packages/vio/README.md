@@ -110,6 +110,8 @@ Enum props можно передавать строками: `orientation="verti
 
 Также доступны raw элементы `<gtk-box>`, `<gtk-label>` и другие зарегистрированные `gtk-*` tags. Они используют тот же renderer.
 
+Любой другой класс Gtk резолвится из GObject Introspection без `registerWidget()`: `<gtk-calendar>`, `<gtk-frame>`, `<gtk-level-bar :value="0.65">`, `<gtk-popover-menu :menu-model="menu">`. Явные регистрации имеют приоритет; режим детей интроспектированного контейнера задаёт явная таблица (`single` только для `frame`, `aspect-frame`, `expander`, `revealer`, `viewport`, `search-bar`, `dialog`, `message-dialog`, `about-dialog`, `application-window`, `shortcuts-window`; остальные — `none`). Покрытие: `listIntrospectedWidgetTypes()` и `getWidgetTypes()`. Правила, таблица режимов и работа с `ref`: [`docs/widgets.md`](../../docs/widgets.md).
+
 ## Сигналы, модель и refs
 
 `@clicked`, `@changed`, `@row-activated`, `@close-request`, `@notify::is-active` соответствуют GTK signals. В обработчик передаются аргументы сигнала; callback может вернуть `true`, чтобы поглотить GTK-событие. `.once` поддерживается. Renderer обновляет callback без повторного подключения и отключает сигналы при unmount; ошибки передаются в Vue `app.config.errorHandler`.
