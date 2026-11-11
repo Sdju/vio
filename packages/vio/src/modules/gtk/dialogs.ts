@@ -16,7 +16,7 @@ import {
 import type { VioElement, VioNode } from "../renderer/index.ts";
 import { getWidgetDefinition, hasWidget, registerWidget, type WidgetDefinition } from "./driver.ts";
 import { releaseSlot } from "./containers.ts";
-import { ensureFontSelection, findFontChooser } from "./font-chooser.ts";
+import { applyFontSelectionWhenReady } from "./font-chooser.ts";
 
 type Attrs = Record<string, unknown>;
 type Handler = (...args: unknown[]) => unknown;
@@ -603,25 +603,26 @@ export const VFontDialog = defineComponent({
     ): Promise<InstanceType<typeof Pango.FontDescription> | null> => {
       const window = requireParent(parent, "VFontDialog.chooseFont()");
       const initial = initialFont ?? fontDescriptionOf(props.fontDesc);
-      return runner.run<InstanceType<typeof Pango.FontDescription>>(
-        (callback, cancellable) => {
-          const previousWindows = new Set(Gtk.Window.listToplevels());
-          dialog.chooseFont(window, initial, cancellable, (...args: unknown[]) =>
-            callback(args[1]),
-          );
-          if (!initial) return;
-          const nativeDialog = Gtk.Window.listToplevels().find(
-            (candidate) => !previousWindows.has(candidate),
-          );
-          const chooser = nativeDialog ? findFontChooser(nativeDialog) : null;
-          if (chooser) ensureFontSelection(chooser, initial);
-        },
-        (result) => {
-          const font = dialog.chooseFontFinish(asyncResult(result));
-          emit("font", font);
-          return font;
-        },
-      );
+      let stopWaiting: (() => void) | null = null;
+      return runner
+        .run<InstanceType<typeof Pango.FontDescription>>(
+          (callback, cancellable) => {
+            const previousWindows = new Set(Gtk.Window.listToplevels());
+            dialog.chooseFont(window, initial, cancellable, (...args: unknown[]) =>
+              callback(args[1]),
+            );
+            if (initial) stopWaiting = applyFontSelectionWhenReady(previousWindows, initial);
+          },
+          (result) => {
+            const font = dialog.chooseFontFinish(asyncResult(result));
+            emit("font", font);
+            return font;
+          },
+        )
+        .finally(() => {
+          stopWaiting?.();
+          stopWaiting = null;
+        });
     };
     onUnmounted(() => runner.dispose());
     expose({

@@ -319,7 +319,9 @@ paths are testable without a portal:
   Select is insensitive only while no font is selected. Pass an initial description to
   `chooseFont(parent, initial)` or set the `font-desc` prop; the dialog then preselects it, enables
   Select and resolves that description. The component expands GTK's incrementally loaded font
-  model before preselection, so the result does not depend on Wayland or X11 frame timing. The test
+  model before preselection and waits for the dialog toplevel that GTK 4.22 creates only after a
+  main-context iteration, so the result does not depend on Wayland, X11 frame timing or the GTK
+  minor version. The test
   passes `Noto Sans 12`, asserts the returned `Pango.FontDescription` (size and a non-empty family,
   since fontconfig substitutes a missing face), and separately checks that a second request still
   cancels to `null`. Headless CI additionally sees GTK's own
