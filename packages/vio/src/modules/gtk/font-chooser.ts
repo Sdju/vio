@@ -15,13 +15,21 @@ export function findFontChooser(widget: NativeWidget): FontChooser | null {
   return null;
 }
 
+type SliceModel = InstanceType<typeof Gtk.SliceListModel>;
+
 function expandFontList(widget: NativeWidget): void {
   if (widget instanceof Gtk.ListView) {
     const selection = widget.getModel();
     const filtered = selection instanceof Gtk.SingleSelection ? selection.getModel() : null;
     const slice = filtered instanceof Gtk.FilterListModel ? filtered.getModel() : null;
-    const model = slice instanceof Gtk.SliceListModel ? slice.getModel() : null;
-    if (slice instanceof Gtk.SliceListModel && model) slice.setSize(model.getNItems());
+    // `GtkSliceListModel` is GTK 4.22+; a typelib without it must not break the walk, and GTK
+    // 4.22's chooser wraps a plain sort model instead.
+    const SliceListModel = (Gtk as unknown as { SliceListModel?: new () => SliceModel })
+      .SliceListModel;
+    if (SliceListModel && slice instanceof SliceListModel) {
+      const model = slice.getModel();
+      if (model) slice.setSize(model.getNItems());
+    }
   }
   for (let child = widget.getFirstChild(); child; child = child.getNextSibling())
     expandFontList(child);
@@ -46,19 +54,24 @@ export function applyFontSelectionWhenReady(
   let attempts = 0;
   let finished = false;
   const source = GLib.timeoutAdd(GLib.PRIORITY_DEFAULT, 20, () => {
-    console.error(`[vio-debug] tick ${attempts} toplevels ${Gtk.Window.listToplevels().length}`);
     if (attempts++ >= 100) {
       finished = true;
       return GLib.SOURCE_REMOVE;
     }
     let selected = false;
+    let found = 0;
     for (const window of Gtk.Window.listToplevels()) {
       if (window === parent) continue;
       const chooser = findFontChooser(window);
       if (!chooser) continue;
+      found++;
       ensureFontSelection(chooser, description);
+      console.error(
+        `[vio-debug] chooser desc=${chooser.getFontDesc()?.toString?.()} font=${chooser.getFont()}`,
+      );
       selected ||= Boolean(chooser.getFont());
     }
+    console.error(`[vio-debug] tick ${attempts} found ${found}`);
     if (!selected) return GLib.SOURCE_CONTINUE;
     finished = true;
     return GLib.SOURCE_REMOVE;
