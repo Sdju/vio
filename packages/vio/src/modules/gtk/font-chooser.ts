@@ -46,6 +46,7 @@ export function applyFontSelectionWhenReady(
   let attempts = 0;
   let finished = false;
   const source = GLib.timeoutAdd(GLib.PRIORITY_DEFAULT, 20, () => {
+    console.error(`[vio-debug] tick ${attempts} toplevels ${Gtk.Window.listToplevels().length}`);
     if (attempts++ >= 100) {
       finished = true;
       return GLib.SOURCE_REMOVE;
