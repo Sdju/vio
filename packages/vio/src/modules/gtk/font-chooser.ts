@@ -34,9 +34,10 @@ export function ensureFontSelection(chooser: FontChooser, description: FontDescr
 
 /**
  * GTK builds the font dialog's window lazily: GTK 4.24 has the toplevel right after
- * `Gtk.FontDialog::choose()`, while 4.22 exposes it only after the main context has iterated.
- * Watch the toplevel list for a short while and apply the description as soon as the chooser
- * exists. Returns a disposer that stops the watch when the request settles.
+ * `Gtk.FontDialog::choose()`, while 4.22 exposes it only after the main context has iterated. The
+ * chooser can also exist before its incremental font list has loaded, and GTK 4.22 drops a
+ * description that arrives before the matching row. Watch the toplevel list and re-apply the
+ * description until the chooser reports a selected font. Returns a disposer for the watch.
  */
 export function applyFontSelectionWhenReady(
   previousWindows: Set<NativeWidget>,
@@ -49,7 +50,7 @@ export function applyFontSelectionWhenReady(
     const chooser = dialog ? findFontChooser(dialog) : null;
     if (!chooser) return GLib.SOURCE_CONTINUE;
     ensureFontSelection(chooser, description);
-    return GLib.SOURCE_REMOVE;
+    return chooser.getFont() ? GLib.SOURCE_REMOVE : GLib.SOURCE_CONTINUE;
   });
   return () => {
     GLib.sourceRemove(source);

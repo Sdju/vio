@@ -889,8 +889,42 @@ await test("VFontDialog preselects a font and resolves a real Pango.FontDescript
       accept = dialog?.getWidgetForResponse(Gtk.ResponseType.OK);
     }
     if (!dialog) throw new Error("the font dialog did not present a Gtk.Dialog");
+    const describeChooser = () => {
+      const find = (widget) => {
+        if (widget instanceof Gtk.FontChooserWidget) return widget;
+        for (let child = widget.getFirstChild(); child; child = child.getNextSibling()) {
+          const found = find(child);
+          if (found) return found;
+        }
+        return null;
+      };
+      const view = (() => {
+        const search = (widget) => {
+          if (widget instanceof Gtk.ListView) return widget;
+          for (let child = widget.getFirstChild(); child; child = child.getNextSibling()) {
+            const found = search(child);
+            if (found) return found;
+          }
+          return null;
+        };
+        return search(dialog);
+      })();
+      const chain = [];
+      for (let model = view?.getModel?.(); model; model = model.getModel?.() ?? null)
+        chain.push(model.constructor.name);
+      const chooser = find(dialog);
+      return {
+        gtk: Gtk.getMajorVersion() + "." + Gtk.getMinorVersion(),
+        chooser: chooser?.constructor?.name ?? null,
+        font: chooser?.getFont?.() ?? null,
+        desc: chooser?.getFontDesc?.()?.toString?.() ?? null,
+        models: chain.join(" > "),
+      };
+    };
     if (!accept?.getSensitive())
-      throw new Error("the preselect font did not enable the Select button");
+      throw new Error(
+        "the preselect font did not enable the Select button: " + JSON.stringify(describeChooser()),
+      );
     accept.emit("clicked");
     pump();
     const result = await pending;
