@@ -34,30 +34,35 @@ export function ensureFontSelection(chooser: FontChooser, description: FontDescr
 
 /**
  * GTK builds the font dialog's window lazily: GTK 4.24 has the toplevel right after
- * `Gtk.FontDialog::choose()`, while 4.22 exposes it only after the main context has iterated. The
- * chooser can also exist before its incremental font list has loaded, and GTK 4.22 drops a
- * description that arrives before the matching row. Watch the toplevel list and re-apply the
- * description until the chooser reports a selected font. Returns a disposer for the watch.
+ * `Gtk.FontDialog::choose()`, while 4.22 creates or realizes it only after the main context has
+ * iterated. The chooser can also exist before its incremental font list has loaded, so a
+ * description set too early is dropped. Watch the toplevels and re-apply the description until a
+ * chooser reports a selected font. Returns a disposer for the watch.
  */
 export function applyFontSelectionWhenReady(
-  previousWindows: Set<NativeWidget>,
+  parent: NativeWidget,
   description: FontDescription,
 ): () => void {
   let attempts = 0;
+  let finished = false;
   const source = GLib.timeoutAdd(GLib.PRIORITY_DEFAULT, 20, () => {
-    if (attempts++ >= 100) return GLib.SOURCE_REMOVE;
-    // Do not assume the dialog is the only new toplevel; scan every window GTK added.
-    let chooser: FontChooser | null = null;
-    for (const window of Gtk.Window.listToplevels()) {
-      if (previousWindows.has(window)) continue;
-      chooser = findFontChooser(window);
-      if (chooser) break;
+    if (attempts++ >= 100) {
+      finished = true;
+      return GLib.SOURCE_REMOVE;
     }
-    if (!chooser) return GLib.SOURCE_CONTINUE;
-    ensureFontSelection(chooser, description);
-    return chooser.getFont() ? GLib.SOURCE_REMOVE : GLib.SOURCE_CONTINUE;
+    let selected = false;
+    for (const window of Gtk.Window.listToplevels()) {
+      if (window === parent) continue;
+      const chooser = findFontChooser(window);
+      if (!chooser) continue;
+      ensureFontSelection(chooser, description);
+      selected ||= Boolean(chooser.getFont());
+    }
+    if (!selected) return GLib.SOURCE_CONTINUE;
+    finished = true;
+    return GLib.SOURCE_REMOVE;
   });
   return () => {
-    GLib.sourceRemove(source);
+    if (!finished) GLib.sourceRemove(source);
   };
 }
