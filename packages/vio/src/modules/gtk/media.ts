@@ -18,6 +18,7 @@ import {
 } from "@vue/runtime-core";
 import type Cairo from "gi:cairo";
 import type { VioElement } from "../renderer/index.ts";
+import { requireGtkVersion } from "./gtk-version.ts";
 
 type Attrs = Record<string, unknown>;
 type Handler = (...args: unknown[]) => unknown;
@@ -1261,6 +1262,9 @@ let sorterClass:
  */
 function comparatorSorterClass() {
   if (sorterClass) return sorterClass;
+  // node-gtk 4.1.1 crashes inside `Gtk.Sorter::compare` (gconstpointer arguments) on GTK 4.22,
+  // so the JS comparator is only safe on 4.24+; see docs/media.md.
+  requireGtkVersion("VSortListModel", 4, 24);
   class VioComparatorSorter extends Gtk.Sorter {
     compareFn: (a: object, b: object) => number = () => 0;
     virtual_compare(a: object | null, b: object | null): number {

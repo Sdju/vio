@@ -11,6 +11,7 @@ import Pango from "gi:Pango-1.0";
 import GL from "gi:GL-1.0";
 import Cairo from "gi:cairo";
 import { getGType } from "node-gtk";
+import { requiresGtk } from "./gtk-version.mjs";
 import {
   VPicture,
   VMediaFile,
@@ -855,40 +856,37 @@ await test("VFilterListModel filters reactively and reports its Gtk.Filter", asy
   app.unmount();
 });
 
-await test("VSortListModel sorts with a JS comparator and resorts on change", async () => {
-  console.log("[sort-probe] start");
-  const store = stringStore(["gamma", "alpha", "beta"]);
-  const compare = ref((a, b) => a.getString().localeCompare(b.getString()));
-  let handle;
-  const app = mount(() =>
-    h(VSortListModel, {
-      ref: (value) => (handle = value),
-      model: store,
-      compare: compare.value,
-    }),
-  );
-  console.log("[sort-probe] mounted");
-  await settle();
-  console.log("[sort-probe] settled");
-  assert.ok(handle.sortListModel instanceof Gtk.SortListModel);
-  assert.ok(handle.sorter instanceof Gtk.Sorter);
-  assert.equal(handle.sorter instanceof Gtk.CustomSorter, false);
-  const names = () => {
-    const result = [];
-    for (let index = 0; index < handle.sortListModel.getNItems(); index++)
-      result.push(handle.sortListModel.getItem(index).getString());
-    return result;
-  };
-  assert.deepEqual(names(), ["alpha", "beta", "gamma"]);
-  console.log("[sort-probe] sorted once");
-  compare.value = (a, b) => b.getString().localeCompare(a.getString());
-  await settle();
-  console.log("[sort-probe] resettled");
-  assert.deepEqual(names(), ["gamma", "beta", "alpha"]);
-  console.log("[sort-probe] sorted twice");
-  app.unmount();
-  console.log("[sort-probe] unmounted");
-});
+await test(
+  "VSortListModel sorts with a JS comparator and resorts on change",
+  { skip: requiresGtk(4, 24) },
+  async () => {
+    const store = stringStore(["gamma", "alpha", "beta"]);
+    const compare = ref((a, b) => a.getString().localeCompare(b.getString()));
+    let handle;
+    const app = mount(() =>
+      h(VSortListModel, {
+        ref: (value) => (handle = value),
+        model: store,
+        compare: compare.value,
+      }),
+    );
+    await settle();
+    assert.ok(handle.sortListModel instanceof Gtk.SortListModel);
+    assert.ok(handle.sorter instanceof Gtk.Sorter);
+    assert.equal(handle.sorter instanceof Gtk.CustomSorter, false);
+    const names = () => {
+      const result = [];
+      for (let index = 0; index < handle.sortListModel.getNItems(); index++)
+        result.push(handle.sortListModel.getItem(index).getString());
+      return result;
+    };
+    assert.deepEqual(names(), ["alpha", "beta", "gamma"]);
+    compare.value = (a, b) => b.getString().localeCompare(a.getString());
+    await settle();
+    assert.deepEqual(names(), ["gamma", "beta", "alpha"]);
+    app.unmount();
+  },
+);
 
 await test("selection helpers expose selected positions for the collection views", async () => {
   const store = stringStore(["a", "b", "c"]);
@@ -955,7 +953,10 @@ await test("wave 4 components mount and unmount without GTK warnings", () => {
           h(VCalendar, { date: "2024-02-29" }),
           h(VStringList, { items: ["a", "b"] }),
           h(VFilterListModel, { model: null, predicate: () => true }),
-          h(VSortListModel, { model: null, compare: (a, b) => 0 }),
+          // The JS sorter needs GTK 4.24+ (node-gtk crashes in compare on 4.22).
+          ...(Gtk.getMinorVersion() >= 24
+            ? [h(VSortListModel, { model: null, compare: (a, b) => 0 })]
+            : []),
           h(VLabel, null, { default: () => "media" }),
         ],
       }),

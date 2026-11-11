@@ -532,7 +532,9 @@ are in [`media.md`](media.md). The non-obvious limits:
   arguments of `GtkCustomSorterFunc` as `undefined` (all three arguments, verified). `useSortListModel`
   uses a JS `Gtk.Sorter` subclass (`virtual_compare`) and `Gtk.SortListModel` instead. The brief asked
   for `Gtk.CustomSorter`; this is the only working equivalent on this binding, and the test asserts
-  the deviation explicitly.
+  the deviation explicitly. It requires GTK **4.24+**: on 4.22 the same `virtual_compare` arguments
+  segfault node-gtk while `Gtk.SortListModel` sorts, so `VSortListModel`/`useSortListModel()` throw
+  `vio: VSortListModel requires GTK 4.24+ (found 4.22)` there.
 - **`Gtk.FilterListModel:autoexpand` does not exist on GTK 4.24.** `VFilterListModel` accepts the
   prop for API symmetry but ignores it. It was a GTK 3 tree-filter concept.
 - **Media interface signals are bridged through notifications.** `Gtk.MediaStream::playing-changed`
@@ -700,6 +702,8 @@ The gates below are checked at widget creation (or, for a read-only handle gette
   4.24.1 GIR, `GtkSvg` is version 4.22 and `GtkSvgWidget` is version 4.24).
 - `VWindowControls`' `useNativeControls` prop and handle getter require GTK **4.18+**
   (`Gtk.WindowControls:use-native-controls`; the wave brief said 4.20).
+- `VSortListModel` / `useSortListModel()` requires GTK **4.24+**: node-gtk 4.1.1 segfaults inside
+  the JS `Gtk.Sorter::compare` on 4.22, which is a binding limit rather than a GTK class floor.
 - `VCalendar` uses `Gtk.Calendar.selectDay()`, which exists on GTK 4.14 and keeps the same
   year/month/day behavior; the 4.20+ `setDate()` method is not required.
 

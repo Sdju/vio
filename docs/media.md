@@ -25,7 +25,7 @@ vp run --filter @zede/vio demo:media   # picture, cairo canvas, GL area, pickers
 | `VCalendar`          | `Gtk.Calendar`               | `v-model:date` (`GLib.DateTime`) | none  | `month` on the handle is 1-based; the native getter stays 0-based      |
 | `VStringList`        | none (`Gtk.StringList`)      | none                             | none  | string items only; exposes `stringList`                                |
 | `VFilterListModel`   | none (`Gtk.FilterListModel`) | none                             | none  | `autoexpand` is accepted but has no effect on GTK 4.24                 |
-| `VSortListModel`     | none (`Gtk.SortListModel`)   | none                             | none  | uses a JS `Gtk.Sorter` subclass instead of `Gtk.CustomSorter`          |
+| `VSortListModel`     | none (`Gtk.SortListModel`)   | none                             | none  | JS `Gtk.Sorter` instead of `Gtk.CustomSorter`; needs GTK 4.24          |
 
 `VMediaFile`, `VStringList`, `VFilterListModel` and `VSortListModel` are null-rendering resources:
 they expose native objects to a component ref and place nothing in the GTK tree.
@@ -190,6 +190,12 @@ item and its boolean return is marshalled, so filtering uses `Gtk.CustomFilter` 
 it to `Gtk.SortListModel`. The comparator is ordinary JavaScript (`< 0`, `> 0`, `0`). This is a
 documented deviation from the wave-4 brief, not a silent fallback: the test asserts that the sorter
 is a `Gtk.Sorter` and explicitly not a `Gtk.CustomSorter`.
+
+The JS sorter only works on GTK **4.24+**: on GTK 4.22 the same `virtual_compare` arguments crash
+node-gtk 4.1.1 (SIGSEGV while `Gtk.SortListModel` sorts the first items), so `VSortListModel` and
+`useSortListModel()` raise
+`vio: VSortListModel requires GTK 4.24+ (found 4.22)` there. The sort test is skipped on the 4.22 CI
+runner and runs on the 4.24.1 desktop.
 
 ### `autoexpand`
 
