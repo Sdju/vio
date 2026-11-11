@@ -857,6 +857,7 @@ await test("VFontDialog preselects a font and resolves a real Pango.FontDescript
   const source = `
     import Gtk from "gi:Gtk-4.0";
     import Pango from "gi:Pango-1.0";
+    import PangoCairo from "gi:PangoCairo-1.0";
     import GLib from "gi:GLib-2.0";
     import { createApp, h, installCss, VFontDialog } from "@zede/vio";
     Gtk.init();
@@ -870,10 +871,20 @@ await test("VFontDialog preselects a font and resolves a real Pango.FontDescript
     await new Promise((resolve) => setTimeout(resolve, 30));
     pump();
     let handle;
-    // The chooser can only select a family that fontconfig and the Pango font map know, so the
-    // test asks for the host's default UI family instead of a hardcoded one.
-    const defaultFont = Gtk.Settings.getDefault()?.getProperty("gtk-font-name") ?? "Sans 10";
-    const family = String(defaultFont).split(",")[0].trim();
+    // The chooser can only select a family that its Pango font map lists; a fontconfig alias such
+    // as "Sans" or a family the host lacks never matches. Prefer the default UI family when the
+    // map knows it and fall back to the first real family.
+    const families = [];
+    const fontMap = PangoCairo.fontMapGetDefault();
+    for (let index = 0; index < fontMap.getNItems(); index++) {
+      const item = fontMap.getItem(index);
+      if (item?.getName) families.push(item.getName());
+    }
+    if (!families.length) throw new Error("the Pango font map lists no families");
+    const settingsFamily = String(
+      Gtk.Settings.getDefault()?.getProperty("gtk-font-name") ?? "",
+    ).split(",")[0].trim();
+    const family = families.includes(settingsFamily) ? settingsFamily : families[0];
     const requested = Pango.FontDescription.fromString(family + " 12");
     const app = createApp({
       setup: () => () => h(VFontDialog, {
@@ -919,6 +930,8 @@ await test("VFontDialog preselects a font and resolves a real Pango.FontDescript
       const chooser = find(dialog);
       return {
         gtk: Gtk.getMajorVersion() + "." + Gtk.getMinorVersion(),
+        family,
+        families: families.length,
         chooser: chooser?.constructor?.name ?? null,
         font: chooser?.getFont?.() ?? null,
         desc: chooser?.getFontDesc?.()?.toString?.() ?? null,
