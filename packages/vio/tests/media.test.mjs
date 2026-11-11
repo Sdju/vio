@@ -856,6 +856,7 @@ await test("VFilterListModel filters reactively and reports its Gtk.Filter", asy
 });
 
 await test("VSortListModel sorts with a JS comparator and resorts on change", async () => {
+  console.log("[sort-probe] start");
   const store = stringStore(["gamma", "alpha", "beta"]);
   const compare = ref((a, b) => a.getString().localeCompare(b.getString()));
   let handle;
@@ -866,7 +867,9 @@ await test("VSortListModel sorts with a JS comparator and resorts on change", as
       compare: compare.value,
     }),
   );
+  console.log("[sort-probe] mounted");
   await settle();
+  console.log("[sort-probe] settled");
   assert.ok(handle.sortListModel instanceof Gtk.SortListModel);
   assert.ok(handle.sorter instanceof Gtk.Sorter);
   assert.equal(handle.sorter instanceof Gtk.CustomSorter, false);
@@ -877,10 +880,14 @@ await test("VSortListModel sorts with a JS comparator and resorts on change", as
     return result;
   };
   assert.deepEqual(names(), ["alpha", "beta", "gamma"]);
+  console.log("[sort-probe] sorted once");
   compare.value = (a, b) => b.getString().localeCompare(a.getString());
   await settle();
+  console.log("[sort-probe] resettled");
   assert.deepEqual(names(), ["gamma", "beta", "alpha"]);
+  console.log("[sort-probe] sorted twice");
   app.unmount();
+  console.log("[sort-probe] unmounted");
 });
 
 await test("selection helpers expose selected positions for the collection views", async () => {
