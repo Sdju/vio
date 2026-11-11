@@ -632,9 +632,9 @@ deviation list are in [`small.md`](small.md). The non-obvious limits:
 - **`GtkAspectFrame:shrink-child` was removed in 4.24.** `VAspectFrame` accepts the prop and
   approximates it with `hexpand`/`vexpand`. Default-slot children are placed in an internal vertical
   `Gtk.Box`, because the native class is a single-child bin.
-- **`GtkTreeExpander:indent-for-expander` was renamed to `indent-for-depth`.** The wrapper writes
-  the name the running GTK knows (`indent-for-depth` on 4.24+, `indent-for-expander` on 4.22) and
-  accepts both prop spellings.
+- **`Gtk.TreeExpander` has no `indent-for-expander`.** GTK 4.14 through 4.24 expose
+  `indent-for-depth` and `indent-for-icon` only; `VTreeExpander` accepts both prop spellings
+  (`indentForDepth` wins) and always writes `indent-for-depth`.
 - **`GtkSvgWidget` does not have `file`/`filename`/`paintable` properties on GTK 4.24.** Its real
   surface is `resource`, `state`, `stylesheet`, the read-only `svg` (`Gtk.Svg`) and
   `loadFromBytes()`. `VSvgWidget` reads local files into `GLib.Bytes` and calls `loadFromBytes`;

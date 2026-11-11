@@ -7,7 +7,7 @@ import Gtk from "gi:Gtk-4.0";
 import Gio from "gi:Gio-2.0";
 import Gdk from "gi:Gdk-4.0";
 import GLib from "gi:GLib-2.0";
-import { requiresGtk, supportsGtk } from "./gtk-version.mjs";
+import { requiresGtk } from "./gtk-version.mjs";
 import {
   VFrame,
   VViewport,
@@ -482,18 +482,12 @@ await test("VTreeExpander maps the renamed indent property and its child", async
   assert.equal(expander.getIndentForIcon(), false);
   assert.equal(expander.getHideExpander(), true);
   assert.equal(handle.item, null);
-  if (supportsGtk(4, 24)) {
-    assert.equal(expander.getIndentForDepth(), false);
-    assert.equal(
-      expander.getProperty("indent-for-expander"),
-      undefined,
-      "GTK 4.24 renamed it to indent-for-depth",
-    );
-  } else {
-    // GTK 4.22 has no indent-for-depth: the wrapper writes the old property name there.
-    assert.equal(expander.getProperty("indent-for-expander"), false);
-    assert.equal(expander.getIndentForDepth, undefined);
-  }
+  assert.equal(expander.getIndentForDepth(), false);
+  assert.equal(
+    expander.getProperty("indent-for-expander"),
+    undefined,
+    "GTK 4 has only indent-for-depth; the old spelling is a prop alias",
+  );
   app.unmount();
 });
 
@@ -665,6 +659,7 @@ await test("VFontChooserWidget applies font props and emits font-activated", asy
 await test("VFontChooserWidget returns an assigned font once it is rooted", () => {
   const source = `
     import Gtk from "gi:Gtk-4.0";
+    import PangoCairo from "gi:PangoCairo-1.0";
     import GLib from "gi:GLib-2.0";
     import { createApp, h, installCss, VFontChooserWidget, VWindow } from "@zede/vio";
     Gtk.init();
@@ -672,10 +667,24 @@ await test("VFontChooserWidget returns an assigned font once it is rooted", () =
     const pump = (iterations = 300) => {
       for (let index = 0; index < iterations; index++) GLib.MainContext.default().iteration(false);
     };
+    // Only a family listed by the Pango font map can be selected; fontconfig aliases such as
+    // "Sans" never match, and the runner may not have the desktop's default family.
+    const fontMap = PangoCairo.fontMapGetDefault();
+    const families = [];
+    for (let index = 0; index < fontMap.getNItems(); index++) {
+      const item = fontMap.getItem(index);
+      if (item?.getName) families.push(item.getName());
+    }
+    if (!families.length) throw new Error("the Pango font map lists no families");
+    const settingsFamily = String(
+      Gtk.Settings.getDefault()?.getProperty("gtk-font-name") ?? "",
+    ).split(",")[0].trim();
+    const requested =
+      (families.includes(settingsFamily) ? settingsFamily : families[0]) + " 12";
     let handle;
     const app = createApp({
       setup: () => () => h(VWindow, { visible: true, title: "font" }, {
-        default: () => h(VFontChooserWidget, { ref: (value) => (handle = value), font: "Noto Sans 12" }),
+        default: () => h(VFontChooserWidget, { ref: (value) => (handle = value), font: requested }),
       }),
     });
     app.mount();
@@ -686,6 +695,7 @@ await test("VFontChooserWidget returns an assigned font once it is rooted", () =
     console.log(JSON.stringify({
       font: handle.font,
       desc: handle.widget.getFontDesc()?.toString?.() ?? null,
+      requested,
     }));
     app.unmount();
   `;
@@ -700,10 +710,9 @@ await test("VFontChooserWidget returns an assigned font once it is rooted", () =
     },
   );
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout.trim()), {
-    font: "Noto Sans 12",
-    desc: "Noto Sans 12",
-  });
+  const report = JSON.parse(result.stdout.trim());
+  assert.equal(report.font, report.requested, "the assigned font is readable once rooted");
+  assert.equal(report.desc, report.requested);
   assert.doesNotMatch(result.stderr, /Gtk-WARNING|Gtk-CRITICAL|Pango-CRITICAL/);
   assert.doesNotMatch(result.stderr, /GLib-CRITICAL|GLib-GObject-CRITICAL|Gdk-CRITICAL/);
 });

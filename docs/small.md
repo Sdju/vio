@@ -24,7 +24,7 @@ vp run --filter @zede/vio demo:small   # frames, ranges, popovers, SVG and title
 | `VPopoverBin`         | `Gtk.PopoverBin`         | none                                    | default, `#popover`      | `#popover` must contain a `Gtk.Popover`                                              |
 | `VEmojiChooser`       | `Gtk.EmojiChooser`       | none                                    | none                     | a popover: it must be parented (for example by `VMenuButton`)                        |
 | `VShortcutLabel`      | `Gtk.ShortcutLabel`      | none                                    | none                     | `accelerator` is an accelerator string such as `<Control>s`                          |
-| `VTreeExpander`       | `Gtk.TreeExpander`       | none                                    | default                  | GTK 4.24 renamed `indent-for-expander` to `indent-for-depth`                         |
+| `VTreeExpander`       | `Gtk.TreeExpander`       | none                                    | default                  | the native property is `indent-for-depth`; `indentForExpander` is an alias prop      |
 | `VSvgWidget`          | `Gtk.SvgWidget`          | none                                    | none                     | GTK 4.24 exposes `resource`/`bytes`, not `file`/`paintable`                          |
 | `VWindowControls`     | `Gtk.WindowControls`     | none                                    | none                     | GTK 4.24 removed `decorative`; `false` hides the controls                            |
 | `VWindowHandle`       | `Gtk.WindowHandle`       | none                                    | default                  | one child                                                                            |
@@ -170,9 +170,9 @@ section/group/shortcut widgets have dedicated `V*` wrappers (see
 
 - `VShortcutLabel` maps `accelerator` and `disabled-text`. `@notify::accelerator` is a normal GTK
   notification.
-- GTK 4.24 renamed `Gtk.TreeExpander:indent-for-expander` to `indent-for-depth`. `VTreeExpander`
-  accepts both props (the modern `indentForDepth` wins) and writes the property name the running
-  GTK knows: `indent-for-depth` on 4.24+, `indent-for-expander` on 4.22 and older. The
+- `Gtk.TreeExpander` has `indent-for-depth` (not a renamed `indent-for-expander`) and
+  `indent-for-icon`. `VTreeExpander` accepts both prop spellings — `indentForDepth` and the legacy
+  `indentForExpander` alias — and writes `indent-for-depth`. The
   read-only `item` and `listRow` are exposed through the handle and `getProperty`/`getItem()`.
 - `Gtk.SvgWidget` is new in GTK 4.24 in this build (the brief said 4.22). Its real API is
   `resource` (GResource path), `state`, `stylesheet` (`GLib.Bytes`) and the read-only `svg`
@@ -242,17 +242,17 @@ section/group/shortcut widgets have dedicated `V*` wrappers (see
 
 ## Deviations from the wave 5 brief
 
-| Brief                                         | GTK 4.24 reality                              | Wrapper behavior                                       |
-| --------------------------------------------- | --------------------------------------------- | ------------------------------------------------------ |
-| `GtkViewport` `@scroll-to`                    | no signal; only `scrollTo()`                  | method on the handle; test asserts the missing signal  |
-| `GtkRevealer` `revealed-changed`              | no such signal                                | synthesized from `notify::reveal-child`                |
-| `GtkScrollbar` `value`/`value-changed`        | no such property/signal                       | `GtkAdjustment` + synthesized `value-changed`          |
-| `GtkAspectFrame` `shrink-child`               | removed in 4.24                               | approximated with `hexpand`/`vexpand`                  |
-| `GtkTreeExpander` `indent-for-expander`       | renamed to `indent-for-depth`                 | both props accepted; the running GTK's name is written |
-| `GtkSvgWidget` `file`/`paintable`             | `resource`/`state`/`stylesheet`/`svg` on 4.24 | `filename`/`file`/`bytes` load through `loadFromBytes` |
-| `GtkWindowControls` `decorative`              | removed in 4.24                               | `decorative=false` hides the widget                    |
-| `GtkAppChooserButton`/`Widget` `content-type` | construct-only                                | passed through `constructProps`; late changes throw    |
-| `GtkAppChooserWidget` `populate-popup`        | no such signal on GTK 4.24                    | only the two application signals are forwarded         |
+| Brief                                         | GTK 4.24 reality                                 | Wrapper behavior                                         |
+| --------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------- |
+| `GtkViewport` `@scroll-to`                    | no signal; only `scrollTo()`                     | method on the handle; test asserts the missing signal    |
+| `GtkRevealer` `revealed-changed`              | no such signal                                   | synthesized from `notify::reveal-child`                  |
+| `GtkScrollbar` `value`/`value-changed`        | no such property/signal                          | `GtkAdjustment` + synthesized `value-changed`            |
+| `GtkAspectFrame` `shrink-child`               | removed in 4.24                                  | approximated with `hexpand`/`vexpand`                    |
+| `Gtk.TreeExpander` `indent-for-expander`      | never existed in GTK 4; it is `indent-for-depth` | both prop spellings accepted; `indent-for-depth` written |
+| `GtkSvgWidget` `file`/`paintable`             | `resource`/`state`/`stylesheet`/`svg` on 4.24    | `filename`/`file`/`bytes` load through `loadFromBytes`   |
+| `GtkWindowControls` `decorative`              | removed in 4.24                                  | `decorative=false` hides the widget                      |
+| `GtkAppChooserButton`/`Widget` `content-type` | construct-only                                   | passed through `constructProps`; late changes throw      |
+| `GtkAppChooserWidget` `populate-popup`        | no such signal on GTK 4.24                       | only the two application signals are forwarded           |
 
 Every deviation is covered by a test that asserts the native surface, not only the wrapper:
 `tests/small.test.mjs` checks the missing viewport/scrollbar signals, the renamed tree-expander
