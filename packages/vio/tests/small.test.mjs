@@ -668,8 +668,10 @@ await test("VFontChooserWidget returns an assigned font once it is rooted", () =
       }),
     });
     app.mount();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    pump();
+    for (let index = 0; index < 50 && !handle.font; index++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      pump();
+    }
     console.log(JSON.stringify({
       font: handle.font,
       desc: handle.widget.getFontDesc()?.toString?.() ?? null,

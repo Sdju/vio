@@ -198,12 +198,12 @@ section/group/shortcut widgets have dedicated `V*` wrappers (see
   `Gdk.RGBA` on GTK's `color-activated` signal; consecutive `notify::rgba` emissions are not used
   because `setRgba()` emits twice.
 - `VFontChooserWidget` maps `font`/`font-desc`, `language`, `level`, `preview-text` and
-  `show-preview-entry`. On GTK 4.24.1 `getFont()` is empty only until a font is selected or
-  assigned: `setFont("Noto Sans 12")` before realization is applied, and once the widget is rooted
-  `getFont()`/`getFontDesc()` return `Noto Sans 12` (covered by a child-process test). An empty
-  chooser has no selection and therefore returns `null`; that is not a readback defect.
-  `v-model:font` is still driven by `font-activated` (the string argument), because user activation
-  is the event that identifies a new choice.
+  `show-preview-entry`. GTK loads its font list in frame-clock batches; on Wayland an assigned font
+  can remain unselected while that list is still incomplete. The component expands GTK's sliced
+  font model before applying the selection, so `getFont()`/`getFontDesc()` return the assigned font
+  without depending on backend frame timing (covered by a child-process test). An empty chooser has no selection and returns
+  `null`. `v-model:font` is still driven by `font-activated` (the string argument), because user
+  activation is the event that identifies a new choice.
 - `VGraphicsOffload` maps `enabled` and `black-background`; the enum is `Gtk.GraphicsOffloadEnabled`.
 
 ## AppChooser (wave 6)

@@ -648,9 +648,10 @@ deviation list are in [`small.md`](small.md). The non-obvious limits:
   and leaves `.widget.popup()`/`.widget.popdown()` as the imperative escape hatch.
 - **`GtkColorChooserWidget` emits `notify::rgba` twice for one `setRgba()`.** `v-model:rgba` is
   therefore driven by `color-activated`, which fires once and carries the `Gdk.RGBA`.
-- **`GtkFontChooserWidget` font readback is empty on 4.24.1.** `getFont()` returns `null` and
-  `font`/`font-desc` stay empty even after realization. `VFontChooserWidget` applies `font`/`font-desc`
-  with setters, but `v-model:font` is driven by `font-activated` (the font name string).
+- **`GtkFontChooserWidget` font selection waits for the incremental font list.** On Wayland,
+  assigning a font before all frame-clock batches have loaded can leave `getFont()` empty.
+  `VFontChooserWidget` and `VFontDialog` expand the sliced model before applying an assigned font;
+  `v-model:font` remains driven by `font-activated` (the font name string).
 - **Standalone scrollbar theme warning.** On this host, GTK 4.24.1 logs
   `GtkGizmo … (slider) reported min height -2` for a `Gtk.Scrollbar` that is not inside a scrolled
   window, regardless of vio. The `demo:small` window adds a non-scoped CSS rule

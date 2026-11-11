@@ -28,14 +28,14 @@ Use Node.js 24 (pinned in `.node-version`), [Vite+](https://viteplus.dev), GTK4 
 On Ubuntu 24.04:
 
 ```bash
-sudo apt-get install build-essential python3 pkg-config libgtk-4-dev libgirepository1.0-dev gir1.2-gtk-4.0 xvfb dbus-x11
+sudo apt-get install build-essential python3 pkg-config libgtk-4-dev libgirepository1.0-dev gir1.2-gtk-4.0 xvfb dbus-x11 weston
 vp install --frozen-lockfile
 vp run check
 vp run test:gtk
 vp run --filter @zede/vio demo
 ```
 
-Without an interactive display, run GTK checks through `dbus-run-session -- xvfb-run -a`. CI validates Linux and installs the packed library into a separate consumer project before exercising real GTK widgets. Other platforms require their own GTK installation; this standalone repository does not yet have macOS/Windows CI.
+Without an interactive display, run GTK checks through `dbus-run-session -- xvfb-run -a`. CI exercises both X11/Xvfb and native Wayland/headless Weston, and installs the packed library into a separate consumer project before exercising real GTK widgets. Other platforms require their own GTK installation; this standalone repository does not yet have macOS/Windows CI.
 
 Oxfmt through `vp fmt` is the only formatter. FEOD enforces module boundaries through public `index.ts` entry points.
 

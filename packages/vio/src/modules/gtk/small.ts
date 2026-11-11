@@ -16,6 +16,7 @@ import type { VioElement } from "../renderer/index.ts";
 import { getWidgetDefinition, hasWidget, registerWidget, type WidgetDefinition } from "./driver.ts";
 import { releaseSlot } from "./containers.ts";
 import { createGtkClass, requireGtkMethod, requireGtkVersion } from "./gtk-version.ts";
+import { ensureFontSelection } from "./font-chooser.ts";
 
 type Attrs = Record<string, unknown>;
 type Handler = (...args: unknown[]) => unknown;
@@ -1251,11 +1252,8 @@ export const VFontChooserWidget = defineComponent({
       if (!chooser || props.font == null) return;
       applying = true;
       try {
-        if (typeof props.font === "string") chooser.setFont(props.font);
-        else {
-          const description = toFontDescription(props.font);
-          if (description) chooser.setFontDesc(description);
-        }
+        const description = toFontDescription(props.font);
+        if (description) ensureFontSelection(chooser, description);
       } finally {
         applying = false;
       }

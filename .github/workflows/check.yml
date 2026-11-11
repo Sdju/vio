@@ -25,7 +25,7 @@ jobs:
       - name: Install GTK dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential python3 pkg-config libgtk-4-dev libgirepository1.0-dev gir1.2-gtk-4.0 xvfb dbus-x11
+          sudo apt-get install -y build-essential python3 pkg-config libgtk-4-dev libgirepository1.0-dev gir1.2-gtk-4.0 xvfb dbus-x11 weston
       - uses: voidzero-dev/setup-vp@v1.21.1
         with:
           node-version-file: .node-version
@@ -34,3 +34,18 @@ jobs:
       - run: vp install --frozen-lockfile
       - name: Checks, real GTK widgets and packed consumer
         run: dbus-run-session -- xvfb-run -a sh -c 'VIO_TEST_GTK=1 vp env exec --node 24.21.0 vp run check && vp env exec --node 24.21.0 vp run test:gtk'
+      - name: Real GTK widgets on Wayland
+        env:
+          GDK_BACKEND: wayland
+        run: |
+          dbus-run-session -- sh -c '
+            weston --backend=headless-backend.so --socket=vio-wayland --idle-time=0 >weston.log 2>&1 &
+            compositor=$!
+            trap "kill $compositor" EXIT
+            export WAYLAND_DISPLAY=vio-wayland
+            for attempt in $(seq 1 50); do
+              [ -S "$XDG_RUNTIME_DIR/vio-wayland" ] && break
+              sleep 0.1
+            done
+            VIO_TEST_GTK=1 vp env exec --node 24.21.0 vp run test:gtk
+          '

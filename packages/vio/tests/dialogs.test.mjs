@@ -875,11 +875,15 @@ await test("VFontDialog preselects a font and resolves a real Pango.FontDescript
     });
     app.mount();
     const pending = handle.chooseFont(parent);
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    pump();
-    const dialog = Gtk.Window.listToplevels().find((window) => window instanceof Gtk.Dialog);
+    let dialog;
+    let accept;
+    for (let index = 0; index < 50 && !accept?.getSensitive(); index++) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      pump();
+      dialog = Gtk.Window.listToplevels().find((window) => window instanceof Gtk.Dialog);
+      accept = dialog?.getWidgetForResponse(Gtk.ResponseType.OK);
+    }
     if (!dialog) throw new Error("the font dialog did not present a Gtk.Dialog");
-    const accept = dialog.getWidgetForResponse(Gtk.ResponseType.OK);
     if (!accept?.getSensitive())
       throw new Error("the preselect font did not enable the Select button");
     accept.emit("clicked");

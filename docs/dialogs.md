@@ -318,7 +318,8 @@ paths are testable without a portal:
   `No Fonts Found` label is present in the widget tree but unmapped. `getFont()` is `null` and
   Select is insensitive only while no font is selected. Pass an initial description to
   `chooseFont(parent, initial)` or set the `font-desc` prop; the dialog then preselects it, enables
-  Select and resolves that description. The test accepts `Noto Sans 12`, asserts the returned
+  Select and resolves that description. The component expands GTK's incrementally loaded font
+  model before preselection, so the result does not depend on Wayland or X11 frame timing. The test accepts `Noto Sans 12`, asserts the returned
   `Pango.FontDescription`, and separately checks that a second request still cancels to `null`.
   `Gtk.FontChooser:font-map` readback is `NULL`; explicitly setting
   `PangoCairo.fontMapGetDefault()` does not change the font list.

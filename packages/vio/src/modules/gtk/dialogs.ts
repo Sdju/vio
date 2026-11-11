@@ -16,6 +16,7 @@ import {
 import type { VioElement, VioNode } from "../renderer/index.ts";
 import { getWidgetDefinition, hasWidget, registerWidget, type WidgetDefinition } from "./driver.ts";
 import { releaseSlot } from "./containers.ts";
+import { ensureFontSelection, findFontChooser } from "./font-chooser.ts";
 
 type Attrs = Record<string, unknown>;
 type Handler = (...args: unknown[]) => unknown;
@@ -604,9 +605,16 @@ export const VFontDialog = defineComponent({
       const initial = initialFont ?? fontDescriptionOf(props.fontDesc);
       return runner.run<InstanceType<typeof Pango.FontDescription>>(
         (callback, cancellable) => {
+          const previousWindows = new Set(Gtk.Window.listToplevels());
           dialog.chooseFont(window, initial, cancellable, (...args: unknown[]) =>
             callback(args[1]),
           );
+          if (!initial) return;
+          const nativeDialog = Gtk.Window.listToplevels().find(
+            (candidate) => !previousWindows.has(candidate),
+          );
+          const chooser = nativeDialog ? findFontChooser(nativeDialog) : null;
+          if (chooser) ensureFontSelection(chooser, initial);
         },
         (result) => {
           const font = dialog.chooseFontFinish(asyncResult(result));
