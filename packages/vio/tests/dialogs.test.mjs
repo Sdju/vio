@@ -572,8 +572,12 @@ await test("VAboutDialog maps text, arrays, license, logo and activate-link", as
       websiteLabel: "Project",
       logo: "dialog-information",
       programName: "vio",
+      // Returning true stops the signal before Gtk.AboutDialog's default handler
+      // launches the URI: headless CI has no OpenURI portal and GTK 4.14 crashes
+      // while falling back to GAppInfo there.
       onActivateLink: (uri) => {
         links.push(uri);
+        return true;
       },
     }),
   );
