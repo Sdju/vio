@@ -919,6 +919,9 @@ await test("VFontDialog preselects a font and resolves a real Pango.FontDescript
         font: chooser?.getFont?.() ?? null,
         desc: chooser?.getFontDesc?.()?.toString?.() ?? null,
         models: chain.join(" > "),
+        toplevels: Gtk.Window.listToplevels().map(
+          (window) => window.constructor.name + (find(window) ? ":chooser" : ""),
+        ),
       };
     };
     if (!accept?.getSensitive())

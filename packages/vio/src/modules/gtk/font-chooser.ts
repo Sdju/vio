@@ -46,8 +46,13 @@ export function applyFontSelectionWhenReady(
   let attempts = 0;
   const source = GLib.timeoutAdd(GLib.PRIORITY_DEFAULT, 20, () => {
     if (attempts++ >= 100) return GLib.SOURCE_REMOVE;
-    const dialog = Gtk.Window.listToplevels().find((window) => !previousWindows.has(window));
-    const chooser = dialog ? findFontChooser(dialog) : null;
+    // Do not assume the dialog is the only new toplevel; scan every window GTK added.
+    let chooser: FontChooser | null = null;
+    for (const window of Gtk.Window.listToplevels()) {
+      if (previousWindows.has(window)) continue;
+      chooser = findFontChooser(window);
+      if (chooser) break;
+    }
     if (!chooser) return GLib.SOURCE_CONTINUE;
     ensureFontSelection(chooser, description);
     return chooser.getFont() ? GLib.SOURCE_REMOVE : GLib.SOURCE_CONTINUE;
