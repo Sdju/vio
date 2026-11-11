@@ -171,7 +171,8 @@ section/group/shortcut widgets have dedicated `V*` wrappers (see
 - `VShortcutLabel` maps `accelerator` and `disabled-text`. `@notify::accelerator` is a normal GTK
   notification.
 - GTK 4.24 renamed `Gtk.TreeExpander:indent-for-expander` to `indent-for-depth`. `VTreeExpander`
-  accepts both props (the modern `indentForDepth` wins) and only writes the existing property. The
+  accepts both props (the modern `indentForDepth` wins) and writes the property name the running
+  GTK knows: `indent-for-depth` on 4.24+, `indent-for-expander` on 4.22 and older. The
   read-only `item` and `listRow` are exposed through the handle and `getProperty`/`getItem()`.
 - `Gtk.SvgWidget` is new in GTK 4.24 in this build (the brief said 4.22). Its real API is
   `resource` (GResource path), `state`, `stylesheet` (`GLib.Bytes`) and the read-only `svg`
@@ -247,7 +248,7 @@ section/group/shortcut widgets have dedicated `V*` wrappers (see
 | `GtkRevealer` `revealed-changed`              | no such signal                                | synthesized from `notify::reveal-child`                |
 | `GtkScrollbar` `value`/`value-changed`        | no such property/signal                       | `GtkAdjustment` + synthesized `value-changed`          |
 | `GtkAspectFrame` `shrink-child`               | removed in 4.24                               | approximated with `hexpand`/`vexpand`                  |
-| `GtkTreeExpander` `indent-for-expander`       | renamed to `indent-for-depth`                 | both props accepted; only the native name is written   |
+| `GtkTreeExpander` `indent-for-expander`       | renamed to `indent-for-depth`                 | both props accepted; the running GTK's name is written |
 | `GtkSvgWidget` `file`/`paintable`             | `resource`/`state`/`stylesheet`/`svg` on 4.24 | `filename`/`file`/`bytes` load through `loadFromBytes` |
 | `GtkWindowControls` `decorative`              | removed in 4.24                               | `decorative=false` hides the widget                    |
 | `GtkAppChooserButton`/`Widget` `content-type` | construct-only                                | passed through `constructProps`; late changes throw    |

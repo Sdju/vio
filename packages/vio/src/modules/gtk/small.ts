@@ -15,7 +15,12 @@ import {
 import type { VioElement } from "../renderer/index.ts";
 import { getWidgetDefinition, hasWidget, registerWidget, type WidgetDefinition } from "./driver.ts";
 import { releaseSlot } from "./containers.ts";
-import { createGtkClass, requireGtkMethod, requireGtkVersion } from "./gtk-version.ts";
+import {
+  createGtkClass,
+  requireGtkMethod,
+  requireGtkVersion,
+  supportsGtkVersion,
+} from "./gtk-version.ts";
 import { ensureFontSelection } from "./font-chooser.ts";
 
 type Attrs = Record<string, unknown>;
@@ -901,6 +906,9 @@ export const VTreeExpander = defineComponent({
     });
     return () => {
       const indent = props.indentForDepth ?? props.indentForExpander;
+      // GTK 4.22 renamed nothing yet: `indent-for-expander` exists there, while 4.24 replaced it
+      // with `indent-for-depth` and dropped the old property.
+      const indentKey = supportsGtkVersion(4, 24) ? "indentForDepth" : "indentForExpander";
       return h(
         "tree-expander",
         {
@@ -908,7 +916,7 @@ export const VTreeExpander = defineComponent({
           ref: element,
           listRow: props.listRow ?? null,
           ...(props.indentForIcon === undefined ? {} : { indentForIcon: props.indentForIcon }),
-          ...(indent === undefined ? {} : { indentForDepth: indent }),
+          ...(indent === undefined ? {} : { [indentKey]: indent }),
           ...(props.hideExpander === undefined ? {} : { hideExpander: props.hideExpander }),
         },
         slots.default?.(),

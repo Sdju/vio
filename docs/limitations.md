@@ -457,8 +457,10 @@ rules and async cancellation contract are in [`dialogs.md`](dialogs.md). The non
   (`getMapped() === false`). `getFont()` is `null` and Select is insensitive only while no font is
   selected, which is normal GTK behaviour. Passing an initial `Pango.FontDescription` (the
   `chooseFont(parent, initial)` argument, or the declarative `font-desc` prop) preselects the row,
-  enables Select and resolves that description: the test accepts `Noto Sans 12` and asserts the
-  resulting `Pango.FontDescription`. `Gtk.FontChooser:font-map` readback is `NULL` (the chooser uses
+  enables Select and resolves that description: the test passes `Noto Sans 12` and asserts the
+  returned `Pango.FontDescription` (its size and a non-empty family). The exact family is
+  host-dependent because fontconfig substitutes a missing face — CI has no Noto Sans and resolves
+  Lato instead. `Gtk.FontChooser:font-map` readback is `NULL` (the chooser uses
   the process default); explicitly calling `setFontMap(PangoCairo.fontMapGetDefault())` changes
   nothing. The default map is the same object before and after `Gtk.init()` (329 families),
   `Gtk.Settings:gtk-font-name` is `Noto Sans,  10`, and `Gtk.FontChooser.level` values 0/1/3/8 do
@@ -628,8 +630,9 @@ deviation list are in [`small.md`](small.md). The non-obvious limits:
 - **`GtkAspectFrame:shrink-child` was removed in 4.24.** `VAspectFrame` accepts the prop and
   approximates it with `hexpand`/`vexpand`. Default-slot children are placed in an internal vertical
   `Gtk.Box`, because the native class is a single-child bin.
-- **`GtkTreeExpander:indent-for-expander` was renamed to `indent-for-depth`.** Only the native name
-  is written; `indent-for-expander` is accepted as a compatibility alias.
+- **`GtkTreeExpander:indent-for-expander` was renamed to `indent-for-depth`.** The wrapper writes
+  the name the running GTK knows (`indent-for-depth` on 4.24+, `indent-for-expander` on 4.22) and
+  accepts both prop spellings.
 - **`GtkSvgWidget` does not have `file`/`filename`/`paintable` properties on GTK 4.24.** Its real
   surface is `resource`, `state`, `stylesheet`, the read-only `svg` (`Gtk.Svg`) and
   `loadFromBytes()`. `VSvgWidget` reads local files into `GLib.Bytes` and calls `loadFromBytes`;
@@ -706,13 +709,15 @@ On an older runtime these paths throw
 it with 4.22, but `Gtk.Picture` exists since GTK 4.0 and the wrapper uses only properties available
 in 4.14, so it works there without a newer class.
 
-`vp run check` type-checks against the GTK **4.14** typings used by CI (Ubuntu 24.04), while runtime
-behavior is verified on GTK **4.24.1**. The shared helper for both checks lives in
-`packages/vio/src/modules/gtk/gtk-version.ts`.
+`vp run check` type-checks against the GTK **4.22** typings used by CI (Ubuntu 26.04), while runtime
+behavior on the maintainer's desktop is verified on GTK **4.24.1**. The shared helper for both
+checks lives in `packages/vio/src/modules/gtk/gtk-version.ts`; the test suite reuses the same rule
+through `packages/vio/tests/gtk-version.mjs` (for example `{ skip: requiresGtk(4, 24) }` for
+`Gtk.SvgWidget` tests that CI cannot run).
 
 The GTK tests assert that no `Gtk-WARNING`/`Gtk-CRITICAL` is printed, so a headless environment
-without an accessibility bus needs `GTK_A11Y=none` (CI sets it in `publish.yml`); on a desktop with
-`org.a11y.Bus` it is not required.
+without an accessibility bus needs `GTK_A11Y=none` (CI sets it in `check.yml` and `publish.yml`);
+on a desktop with `org.a11y.Bus` it is not required.
 
 ## Imperative escape hatch
 

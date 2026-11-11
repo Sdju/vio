@@ -7,6 +7,7 @@ import Gtk from "gi:Gtk-4.0";
 import Gio from "gi:Gio-2.0";
 import Gdk from "gi:Gdk-4.0";
 import GLib from "gi:GLib-2.0";
+import { requiresGtk, supportsGtk } from "./gtk-version.mjs";
 import {
   VFrame,
   VViewport,
@@ -479,56 +480,66 @@ await test("VTreeExpander maps the renamed indent property and its child", async
   assert.ok(expander instanceof Gtk.TreeExpander);
   assert.equal(expander.getChild().getLabel(), "row");
   assert.equal(expander.getIndentForIcon(), false);
-  assert.equal(expander.getIndentForDepth(), false);
   assert.equal(expander.getHideExpander(), true);
   assert.equal(handle.item, null);
-  assert.equal(
-    expander.getProperty("indent-for-expander"),
-    undefined,
-    "GTK 4.24 renamed it to indent-for-depth",
-  );
+  if (supportsGtk(4, 24)) {
+    assert.equal(expander.getIndentForDepth(), false);
+    assert.equal(
+      expander.getProperty("indent-for-expander"),
+      undefined,
+      "GTK 4.24 renamed it to indent-for-depth",
+    );
+  } else {
+    // GTK 4.22 has no indent-for-depth: the wrapper writes the old property name there.
+    assert.equal(expander.getProperty("indent-for-expander"), false);
+    assert.equal(expander.getIndentForDepth, undefined);
+  }
   app.unmount();
 });
 
-await test("VSvgWidget loads a file, accepts bytes and reports a missing file", async () => {
-  let handle;
-  const app = mount(() => h(VSvgWidget, { ref: (value) => (handle = value), filename: svgPath }));
-  await settle();
-  const widget = widgetOf(app);
-  assert.ok(widget instanceof Gtk.SvgWidget);
-  assert.equal(handle.error, null);
-  assert.ok(handle.svg instanceof Gtk.Svg);
-  assert.equal(handle.paintable, handle.svg);
-  assert.equal(
-    widget.getProperty("paintable"),
-    undefined,
-    "GtkSvgWidget 4.24 exposes a GtkSvg through the svg property, not paintable",
-  );
-  assert.equal(widget.getProperty("file"), undefined);
-  app.unmount();
+await test(
+  "VSvgWidget loads a file, accepts bytes and reports a missing file",
+  { skip: requiresGtk(4, 24) },
+  async () => {
+    let handle;
+    const app = mount(() => h(VSvgWidget, { ref: (value) => (handle = value), filename: svgPath }));
+    await settle();
+    const widget = widgetOf(app);
+    assert.ok(widget instanceof Gtk.SvgWidget);
+    assert.equal(handle.error, null);
+    assert.ok(handle.svg instanceof Gtk.Svg);
+    assert.equal(handle.paintable, handle.svg);
+    assert.equal(
+      widget.getProperty("paintable"),
+      undefined,
+      "GtkSvgWidget 4.24 exposes a GtkSvg through the svg property, not paintable",
+    );
+    assert.equal(widget.getProperty("file"), undefined);
+    app.unmount();
 
-  const bytes = GLib.Bytes.new(Array.from(Buffer.from(svgMarkup, "utf8")));
-  const fromBytes = mount(() =>
-    h(VSvgWidget, {
-      ref: (value) => (handle = value),
-      bytes,
-      state: 2,
-      stylesheet: "rect { fill: #3366cc; }",
-    }),
-  );
-  await settle();
-  assert.equal(handle.error, null);
-  assert.equal(widgetOf(fromBytes).getState(), 2);
-  assert.ok(widgetOf(fromBytes).getStylesheet() instanceof GLib.Bytes);
-  fromBytes.unmount();
+    const bytes = GLib.Bytes.new(Array.from(Buffer.from(svgMarkup, "utf8")));
+    const fromBytes = mount(() =>
+      h(VSvgWidget, {
+        ref: (value) => (handle = value),
+        bytes,
+        state: 2,
+        stylesheet: "rect { fill: #3366cc; }",
+      }),
+    );
+    await settle();
+    assert.equal(handle.error, null);
+    assert.equal(widgetOf(fromBytes).getState(), 2);
+    assert.ok(widgetOf(fromBytes).getStylesheet() instanceof GLib.Bytes);
+    fromBytes.unmount();
 
-  const missing = mount(() =>
-    h(VSvgWidget, { ref: (value) => (handle = value), filename: "/tmp/vio-small-missing.svg" }),
-  );
-  await settle();
-  assert.match(handle.error, /not found/);
-  missing.unmount();
-});
+    const missing = mount(() =>
+      h(VSvgWidget, { ref: (value) => (handle = value), filename: "/tmp/vio-small-missing.svg" }),
+    );
+    await settle();
+    assert.match(handle.error, /not found/);
+    missing.unmount();
+  },
+);
 
 await test("VWindowControls and VWindowHandle map custom titlebar props", async () => {
   let controls;
@@ -732,7 +743,10 @@ await test("wave 5 components mount and unmount without GTK warnings", () => {
           h(VTreeExpander, { indentForIcon: true, indentForDepth: false }, {
             default: () => h(VLabel, null, { default: () => "row" }),
           }),
-          h(VSvgWidget, { filename: "/tmp/vio-small-missing.svg" }),
+          // GtkSvgWidget is GTK 4.24+; CI runs 4.22.
+          ...(Gtk.getMinorVersion() >= 24
+            ? [h(VSvgWidget, { filename: "/tmp/vio-small-missing.svg" })]
+            : []),
           h(VWindowControls, { side: "end" }),
           h(VWindowHandle, null, { default: () => h(VLabel, null, { default: () => "handle" }) }),
           h(VColorChooserWidget, { rgba: "#112233" }),

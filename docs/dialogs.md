@@ -319,8 +319,12 @@ paths are testable without a portal:
   Select is insensitive only while no font is selected. Pass an initial description to
   `chooseFont(parent, initial)` or set the `font-desc` prop; the dialog then preselects it, enables
   Select and resolves that description. The component expands GTK's incrementally loaded font
-  model before preselection, so the result does not depend on Wayland or X11 frame timing. The test accepts `Noto Sans 12`, asserts the returned
-  `Pango.FontDescription`, and separately checks that a second request still cancels to `null`.
+  model before preselection, so the result does not depend on Wayland or X11 frame timing. The test
+  passes `Noto Sans 12`, asserts the returned `Pango.FontDescription` (size and a non-empty family,
+  since fontconfig substitutes a missing face), and separately checks that a second request still
+  cancels to `null`. Headless CI additionally sees GTK's own
+  `GtkGizmo … (slider) reported min …` measurement lines from the chooser's internal sliders; the
+  test filters exactly those lines and still fails on any other `Gtk`/`GLib` warning.
   `Gtk.FontChooser:font-map` readback is `NULL`; explicitly setting
   `PangoCairo.fontMapGetDefault()` does not change the font list.
 
