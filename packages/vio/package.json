@@ -1,6 +1,6 @@
 {
   "name": "@zede/vio",
-  "version": "0.7.3",
+  "version": "0.7.4",
   "description": "Vue custom renderer for native GTK4 applications on Node.js",
   "keywords": [
     "desktop",

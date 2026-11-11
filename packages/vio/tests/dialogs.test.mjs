@@ -117,6 +117,7 @@ await test("VWindow maps properties, cancels close-request and destroys on unmou
   const window = widgetOf(app);
   await settle();
   assert.ok(window instanceof Gtk.Window);
+  assert.equal(handle.widget, window, "the component ref exposes the live native window");
   assert.equal(window.getTitle(), "wave 3");
   assert.equal(window.getProperty("default-width"), 360);
   assert.equal(window.getProperty("default-height"), 220);
@@ -166,6 +167,7 @@ await test("VApplicationWindow registers, reuses and stops the application clean
   );
   const window = widgetOf(app);
   const application = first.application;
+  assert.equal(first.widget, window);
   assert.ok(application instanceof Gtk.Application);
   assert.equal(application.getIsRegistered(), true);
   assert.equal(window.getApplication(), application);
@@ -341,6 +343,7 @@ await test("VDialog puts #content in the content area and maps declarative butto
   );
   const dialog = widgetOf(app);
   assert.ok(dialog instanceof Gtk.Dialog);
+  assert.equal(handle.widget, dialog);
   assert.deepEqual(labelsIn(dialog.getContentArea()), ["dialog content"]);
   assert.deepEqual([...handle.buttons.keys()], ["ok", 2]);
   assert.equal(handle.button("ok").getLabel(), "OK");

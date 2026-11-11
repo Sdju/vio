@@ -694,7 +694,13 @@ export const VWindow = defineComponent({
       window?.destroy();
     };
     onUnmounted(() => emit("destroy"));
-    expose({ ...handle, destroy });
+    expose({
+      element: handle.element,
+      get widget() {
+        return handle.widget;
+      },
+      destroy,
+    });
     return () => {
       const { attrs: rest, handler } = closeRequestHandler(attrs);
       const parent = transient();
@@ -810,7 +816,10 @@ export const VApplicationWindow = defineComponent({
       if (window && app && window.getApplication() === app) window.setApplication(null);
     });
     expose({
-      ...handle,
+      element: handle.element,
+      get widget() {
+        return handle.widget;
+      },
       get application() {
         return application.value;
       },
@@ -1117,7 +1126,10 @@ export const VDialog = defineComponent({
       return undefined;
     };
     expose({
-      ...handle,
+      element: handle.element,
+      get widget() {
+        return handle.widget;
+      },
       get buttons() {
         return records;
       },

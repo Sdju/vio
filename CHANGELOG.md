@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.4] - 2026-11-11
+
+### Fixed
+
+- `VWindow`, `VApplicationWindow` and `VDialog` component refs expose a live `widget` getter instead of capturing `null` during setup.
+
 ## [0.7.3] - 2026-11-11
 
 ### Added
