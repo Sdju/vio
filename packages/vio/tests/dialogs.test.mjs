@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { withoutSliderSizeWarnings } from "./gtk-warnings.mjs";
 import { writeFileSync } from "node:fs";
 import Gtk from "gi:Gtk-4.0";
 import Gio from "gi:Gio-2.0";
@@ -978,14 +979,7 @@ await test("VFontDialog preselects a font and resolves a real Pango.FontDescript
   );
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout.trim(), /^font-ok \S/);
-  // GTK 4.14 (CI) reports negative minimum sizes for the font dialog's internal sliders even
-  // with the local slider CSS rule; see docs/limitations.md. Nothing else may warn.
-  const stderr = result.stderr
-    .split(/\r?\n/)
-    .filter(
-      (line) => !/\(slider\) reported min (?:width|height) -\d+, but sizes must be >= 0/.test(line),
-    )
-    .join("\n");
+  const stderr = withoutSliderSizeWarnings(result.stderr);
   assert.doesNotMatch(stderr, /Gtk-WARNING|Gtk-CRITICAL/);
   assert.doesNotMatch(stderr, /GLib-CRITICAL|GLib-GObject-CRITICAL|Gdk-CRITICAL/);
 });

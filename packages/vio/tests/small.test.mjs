@@ -8,6 +8,7 @@ import Gio from "gi:Gio-2.0";
 import Gdk from "gi:Gdk-4.0";
 import GLib from "gi:GLib-2.0";
 import { requiresGtk } from "./gtk-version.mjs";
+import { withoutSliderSizeWarnings } from "./gtk-warnings.mjs";
 import {
   VFrame,
   VViewport,
@@ -713,8 +714,9 @@ await test("VFontChooserWidget returns an assigned font once it is rooted", () =
   const report = JSON.parse(result.stdout.trim());
   assert.equal(report.font, report.requested, "the assigned font is readable once rooted");
   assert.equal(report.desc, report.requested);
-  assert.doesNotMatch(result.stderr, /Gtk-WARNING|Gtk-CRITICAL|Pango-CRITICAL/);
-  assert.doesNotMatch(result.stderr, /GLib-CRITICAL|GLib-GObject-CRITICAL|Gdk-CRITICAL/);
+  const stderr = withoutSliderSizeWarnings(result.stderr);
+  assert.doesNotMatch(stderr, /Gtk-WARNING|Gtk-CRITICAL|Pango-CRITICAL/);
+  assert.doesNotMatch(stderr, /GLib-CRITICAL|GLib-GObject-CRITICAL|Gdk-CRITICAL/);
 });
 
 await test("wave 5 components mount and unmount without GTK warnings", () => {
