@@ -7,10 +7,18 @@ All notable changes to this project are documented in this file. The format is b
 ### Added
 
 - Native Wayland GTK test runs with headless Weston in the check and publish workflows, alongside the existing X11/Xvfb coverage.
+- GTK-version gates for tests (`packages/vio/tests/gtk-version.mjs`), so 4.24-only suites are skipped on the 4.22 CI runner instead of failing.
+
+### Changed
+
+- CI runs on Ubuntu 26.04 with GTK 4.22: `check.yml` and `publish.yml` use `ubuntu-26.04`, and `vp run check` type-checks against the 4.22 typings instead of the former 4.14 baseline. Both workflows set `GTK_A11Y=none` for the headless runner.
 
 ### Fixed
 
 - `VFontChooserWidget` and `VFontDialog` expand GTK's incrementally loaded font model before applying an initial font, making preselection reliable on both Wayland and X11.
+- `VFontDialog` waits for the dialog window that GTK 4.22 creates after a main-context iteration and re-applies the description until the chooser has selected it.
+- `VTreeExpander` always writes the native `indent-for-depth` property; `indentForExpander` stays an accepted prop alias. GTK 4 has no `indent-for-expander`.
+- `VSortListModel` and `useSortListModel()` raise `VSortListModel requires GTK 4.24+` on 4.22, where node-gtk 4.1.1 segfaults inside the JavaScript `Gtk.Sorter::compare`.
 
 ## [0.7.2] - 2026-11-01
 
