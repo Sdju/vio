@@ -321,10 +321,10 @@ paths are testable without a portal:
   Select and resolves that description. The component expands GTK's incrementally loaded font
   model before preselection and waits for the dialog toplevel that GTK 4.22 creates only after a
   main-context iteration, so the result does not depend on Wayland, X11 frame timing or the GTK
-  minor version. The test
-  passes `Noto Sans 12`, asserts the returned `Pango.FontDescription` (size and a non-empty family,
-  since fontconfig substitutes a missing face), and separately checks that a second request still
-  cancels to `null`. Headless CI additionally sees GTK's own
+  minor version. The test preselects the host's default UI family (`Gtk.Settings:gtk-font-name`) at
+  size 12 and asserts the family and size it gets back — the chooser can only select a family
+  fontconfig knows, so a hardcoded family fails on a runner without it — and separately checks that
+  a second request still cancels to `null`. Headless CI additionally sees GTK's own
   `GtkGizmo … (slider) reported min …` measurement lines from the chooser's internal sliders; the
   test filters exactly those lines and still fails on any other `Gtk`/`GLib` warning.
   `Gtk.FontChooser:font-map` readback is `NULL`; explicitly setting

@@ -59,19 +59,13 @@ export function applyFontSelectionWhenReady(
       return GLib.SOURCE_REMOVE;
     }
     let selected = false;
-    let found = 0;
     for (const window of Gtk.Window.listToplevels()) {
       if (window === parent) continue;
       const chooser = findFontChooser(window);
       if (!chooser) continue;
-      found++;
       ensureFontSelection(chooser, description);
-      console.error(
-        `[vio-debug] chooser desc=${chooser.getFontDesc()?.toString?.()} font=${chooser.getFont()}`,
-      );
       selected ||= Boolean(chooser.getFont());
     }
-    console.error(`[vio-debug] tick ${attempts} found ${found}`);
     if (!selected) return GLib.SOURCE_CONTINUE;
     finished = true;
     return GLib.SOURCE_REMOVE;

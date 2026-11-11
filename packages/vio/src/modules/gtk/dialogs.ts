@@ -610,10 +610,7 @@ export const VFontDialog = defineComponent({
             dialog.chooseFont(window, initial, cancellable, (...args: unknown[]) =>
               callback(args[1]),
             );
-            if (initial) {
-              console.error("[vio-debug] preselect scheduled");
-              stopWaiting = applyFontSelectionWhenReady(window, initial);
-            } else console.error("[vio-debug] no initial font");
+            if (initial) stopWaiting = applyFontSelectionWhenReady(window, initial);
           },
           (result) => {
             const font = dialog.chooseFontFinish(asyncResult(result));

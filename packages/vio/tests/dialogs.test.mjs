@@ -870,7 +870,11 @@ await test("VFontDialog preselects a font and resolves a real Pango.FontDescript
     await new Promise((resolve) => setTimeout(resolve, 30));
     pump();
     let handle;
-    const requested = Pango.FontDescription.fromString("Noto Sans 12");
+    // The chooser can only select a family that fontconfig and the Pango font map know, so the
+    // test asks for the host's default UI family instead of a hardcoded one.
+    const defaultFont = Gtk.Settings.getDefault()?.getProperty("gtk-font-name") ?? "Sans 10";
+    const family = String(defaultFont).split(",")[0].trim();
+    const requested = Pango.FontDescription.fromString(family + " 12");
     const app = createApp({
       setup: () => () => h(VFontDialog, {
         ref: (value) => (handle = value),
@@ -933,11 +937,11 @@ await test("VFontDialog preselects a font and resolves a real Pango.FontDescript
     const result = await pending;
     if (!(result instanceof Pango.FontDescription))
       throw new Error("the accepted font is not a Pango.FontDescription");
-    // fontconfig substitutes a family when the requested one is missing (CI has no Noto Sans),
-    // so the resolved description must keep the size and carry a family, not the exact name.
+    // The description must come back with the requested family and size, not GTK's default.
+    if (result.getFamily() !== requested.getFamily())
+      throw new Error("the dialog resolved a different family: " + result.toString());
     if (result.getSize() !== requested.getSize())
       throw new Error("the dialog resolved a different size: " + result.toString());
-    if (!result.getFamily()) throw new Error("the dialog resolved a font without a family");
     if (handle.pending) throw new Error("pending was not cleared");
     // A second request without a selection is still cancellable and resolves null, not rejects.
     const second = handle.chooseFont(parent);

@@ -457,10 +457,10 @@ rules and async cancellation contract are in [`dialogs.md`](dialogs.md). The non
   (`getMapped() === false`). `getFont()` is `null` and Select is insensitive only while no font is
   selected, which is normal GTK behaviour. Passing an initial `Pango.FontDescription` (the
   `chooseFont(parent, initial)` argument, or the declarative `font-desc` prop) preselects the row,
-  enables Select and resolves that description: the test passes `Noto Sans 12` and asserts the
-  returned `Pango.FontDescription` (its size and a non-empty family). The exact family is
-  host-dependent because fontconfig substitutes a missing face — CI has no Noto Sans and resolves
-  Lato instead. `Gtk.FontChooser:font-map` readback is `NULL` (the chooser uses
+  enables Select and resolves that description. The test therefore asks for the host's default UI
+  family (`Gtk.Settings:gtk-font-name`, `Noto Sans` here) at size 12 and asserts the family and size
+  it gets back: the chooser can only select a family that fontconfig knows, so a hardcoded family
+  fails on a runner without it. `Gtk.FontChooser:font-map` readback is `NULL` (the chooser uses
   the process default); explicitly calling `setFontMap(PangoCairo.fontMapGetDefault())` changes
   nothing. The default map is the same object before and after `Gtk.init()` (329 families),
   `Gtk.Settings:gtk-font-name` is `Noto Sans,  10`, and `Gtk.FontChooser.level` values 0/1/3/8 do
